@@ -19,6 +19,15 @@
   --color-brand-mark: #12233f;
   --color-brand-sparkle: #2456c4;
 
+  --color-approved-text: #156b3b;
+  --color-approved-bg: #e8f5ee;
+  --color-pending-text: #805210;
+  --color-pending-bg: #fdf6ec;
+  --color-rejected-text: #a53023;
+  --color-rejected-bg: #fde8e8;
+  --color-superseded-text: #526176;
+  --color-superseded-bg: #eef2f7;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -74,6 +83,15 @@
   --color-brand-background: #12233f;
   --color-brand-mark: #ffffff;
   --color-brand-sparkle: #50a7ee;
+
+  --color-approved-text: #8ee0ac;
+  --color-approved-bg: #163b2a;
+  --color-pending-text: #f3cd88;
+  --color-pending-bg: #3d3019;
+  --color-rejected-text: #ffb4ac;
+  --color-rejected-bg: #482522;
+  --color-superseded-text: #c1cddd;
+  --color-superseded-bg: #28364c;
 }
 
 *,

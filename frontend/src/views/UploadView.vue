@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatSize } from '../utils/format';
 import { ref, onMounted } from 'vue';
 import api from '../api/client';
 
@@ -110,11 +111,6 @@ async function submitLink() {
   } finally {
     uploading.value = false;
   }
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 onMounted(loadLocations);

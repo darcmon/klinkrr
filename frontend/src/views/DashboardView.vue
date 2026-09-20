@@ -4,6 +4,8 @@ import { ref, onMounted } from 'vue';
 import type { PendingVersion } from '../types/version';
 
 import BaseButton from '../components/BaseButton.vue';
+import StatusBadge from '../components/StatusBadge.vue';
+import VersionSummary from '../components/VersionSummary.vue';
 
 const pending = ref<PendingVersion[]>([]);
 const loading = ref(true);
@@ -50,10 +52,6 @@ async function reject(id: string) {
   }
 }
 
-function formatSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 onMounted(loadPending);
 </script>
 
@@ -72,21 +70,16 @@ onMounted(loadPending);
     <ul v-else class="pending-list">
       <li v-for="v in pending" :key="v.id" class="pending-item">
         <div class="info">
-          <strong>
-            {{ v.kind === 'link' ? v.link_url : v.original_filename }}
-          </strong>
+          <StatusBadge status="pending" />
+          <VersionSummary :version="v" />
 
           <span class="meta">
-            <template v-if="v.kind === 'link'"> Redirect link · </template>
-            <template v-else-if="v.file_size_bytes !== null">
-              {{ formatSize(v.file_size_bytes) }} ·
-            </template>
             v{{ v.version_number }} · {{ v.location_display_name }} (/{{
               v.location_slug
             }})
           </span>
 
-          <span class="meta">Submitted by {{ v.uploaded_by }}</span>
+          <span class="meta"> Submitted by {{ v.uploaded_by }} </span>
         </div>
         <div class="actions">
           <BaseButton :disabled="actioningId !== null" @click="approve(v.id)">
