@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { formatDate } from '../utils/format';
 import type { ArchivedVersion, ArchiveResponse } from '../types/version';
 import api from '../api/client';
 
@@ -15,10 +16,6 @@ const error = ref('');
 const statusFilter = ref('');
 const page = ref(1);
 const perPage = 20;
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
-}
 
 async function downloadVersion(version: ArchivedVersion) {
   if (version.kind !== 'file' || downloadingId.value !== null) return;

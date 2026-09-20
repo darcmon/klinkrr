@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    variant?: 'primary' | 'secondary';
+    variant?: 'primary' | 'secondary' | 'danger';
     type?: 'button' | 'submit' | 'reset';
     disabled?: boolean;
   }>(),
@@ -60,5 +60,14 @@ withDefaults(
 .base-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.base-button--danger {
+  color: var(--color-on-danger);
+  background-color: var(--color-danger);
+}
+
+.base-button--danger:hover:not(:disabled) {
+  background-color: var(--color-danger-hover);
 }
 </style>

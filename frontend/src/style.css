@@ -28,6 +28,10 @@
   --color-superseded-text: #526176;
   --color-superseded-bg: #eef2f7;
 
+  --color-danger: #a53023;
+  --color-danger-hover: #87271d;
+  --color-on-danger: #ffffff;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -92,6 +96,10 @@
   --color-rejected-bg: #482522;
   --color-superseded-text: #c1cddd;
   --color-superseded-bg: #28364c;
+
+  --color-danger: #ffb4ac;
+  --color-danger-hover: #ffd0ca;
+  --color-on-danger: #482522;
 }
 
 *,

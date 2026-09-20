@@ -1,3 +1,7 @@
+export function formatDate(value: string): string {
+  return new Date(value).toLocaleString();
+}
+
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
 
