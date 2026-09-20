@@ -12,6 +12,7 @@ const route = useRoute();
     <template #header>
       <AppHeader />
     </template>
+    <router-view />
   </AppLayout>
 
   <template v-else>

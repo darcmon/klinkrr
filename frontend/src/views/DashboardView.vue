@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import api from '../api/client';
 import { ref, onMounted } from 'vue';
 import type { PendingVersion } from '../types/version';
-import api from '../api/client';
+
+import BaseButton from '../components/BaseButton.vue';
 
 const pending = ref<PendingVersion[]>([]);
 const loading = ref(true);
@@ -21,6 +23,7 @@ async function loadPending() {
 }
 
 async function approve(id: string) {
+  if (actioningId.value !== null) return;
   actioningId.value = id;
   try {
     await api.post(`/admin/versions/${id}/approve`);
@@ -33,6 +36,8 @@ async function approve(id: string) {
 }
 
 async function reject(id: string) {
+  if (actioningId.value !== null) return;
+
   if (!confirm('Reject this version?')) return;
   actioningId.value = id;
   try {
@@ -84,12 +89,17 @@ onMounted(loadPending);
           <span class="meta">Submitted by {{ v.uploaded_by }}</span>
         </div>
         <div class="actions">
-          <button :disabled="actioningId === v.id" @click="approve(v.id)">
+          <BaseButton :disabled="actioningId !== null" @click="approve(v.id)">
             Approve
-          </button>
-          <button :disabled="actioningId === v.id" @click="reject(v.id)">
-            Reject
-          </button>
+          </BaseButton>
+
+          <BaseButton
+            variant="secondary"
+            :disabled="actioningId !== null"
+            @click="reject(v.id)"
+          >
+            Reject…
+          </BaseButton>
         </div>
       </li>
     </ul>

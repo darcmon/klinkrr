@@ -37,4 +37,12 @@
     padding: var(--space-8);
   }
 }
+@media (max-width: 767px) {
+  .app-content {
+    padding-bottom: calc(
+      var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) +
+        var(--space-6)
+    );
+  }
+}
 </style>

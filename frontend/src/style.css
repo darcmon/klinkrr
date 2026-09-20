@@ -15,6 +15,10 @@
   --color-link: #2456c4;
   --color-focus: #2456c4;
 
+  --color-brand-background: #ffffff;
+  --color-brand-mark: #12233f;
+  --color-brand-sparkle: #2456c4;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -47,6 +51,7 @@
   line-height: var(--leading-body);
   color: var(--color-text);
   background-color: var(--color-page);
+  --mobile-nav-height: 4.5rem;
 }
 
 :root[data-theme='dark'] {
@@ -65,6 +70,10 @@
 
   --color-link: #91c9f7;
   --color-focus: #91c9f7;
+
+  --color-brand-background: #12233f;
+  --color-brand-mark: #ffffff;
+  --color-brand-sparkle: #50a7ee;
 }
 
 *,
