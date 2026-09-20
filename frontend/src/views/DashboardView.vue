@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuth } from '../composables/useAuth';
 import type { PendingVersion } from '../types/version';
 import api from '../api/client';
-
-const router = useRouter();
-const { logout } = useAuth();
 
 const pending = ref<PendingVersion[]>([]);
 const loading = ref(true);
@@ -54,12 +49,6 @@ function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-function handleLogout() {
-  logout();
-  router.push('/login');
-}
-
 onMounted(loadPending);
 </script>
 
@@ -67,7 +56,6 @@ onMounted(loadPending);
   <div class="dashboard">
     <header>
       <h1>Pending Approvals</h1>
-      <button @click="handleLogout">Log out</button>
     </header>
 
     <p v-if="loading">Loading…</p>

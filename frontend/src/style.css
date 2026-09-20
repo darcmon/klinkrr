@@ -31,7 +31,20 @@
 
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.5;
+
+  --text-small: 0.8125rem;
+  --text-body: 1rem;
+  --text-section: 1.125rem;
+  --text-page: 1.5rem;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-body: 1.5;
+  --leading-heading: 1.25;
+  line-height: var(--leading-body);
   color: var(--color-text);
   background-color: var(--color-page);
 }
@@ -63,6 +76,55 @@
 body {
   margin: 0;
   min-width: 320px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text);
+  line-height: var(--leading-heading);
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: var(--text-page);
+  font-weight: var(--weight-bold);
+}
+
+h2,
+h3 {
+  font-size: var(--text-section);
+  font-weight: var(--weight-semibold);
+}
+
+p {
+  margin: 0 0 var(--space-4);
+  overflow-wrap: anywhere;
+}
+
+small {
+  font-size: var(--text-small);
+}
+
+strong {
+  font-weight: var(--weight-semibold);
+}
+
+code {
+  font-family: var(--font-mono);
+}
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.text-small {
+  font-size: var(--text-small);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
 }
 
 button,

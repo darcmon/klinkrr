@@ -1,17 +1,21 @@
 <script setup lang="ts">
+import { useRoute } from 'vue-router';
+import AppHeader from './components/AppHeader.vue';
+import AppLayout from './components/AppLayout.vue';
 import ThemeSelector from './components/ThemeSelector.vue';
-import { useAuth } from './composables/useAuth';
-const { isAuthenticated } = useAuth();
+
+const route = useRoute();
 </script>
 
 <template>
-  <ThemeSelector />
+  <AppLayout v-if="!route.meta.public">
+    <template #header>
+      <AppHeader />
+    </template>
+  </AppLayout>
 
-  <nav v-if="isAuthenticated">
-    <router-link to="/dashboard">Dashboard</router-link>
-    <router-link to="/locations">Locations</router-link>
-    <router-link to="/upload">Upload</router-link>
-  </nav>
-
-  <router-view />
+  <template v-else>
+    <ThemeSelector />
+    <router-view />
+  </template>
 </template>
