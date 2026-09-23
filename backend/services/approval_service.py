@@ -31,6 +31,54 @@ class ApprovalService:
         await db.refresh(version)
         return version, location
 
+    async def _publish_version(
+        self,
+        db: AsyncSession,
+        version: FileVersion,
+        location: Location,
+    ) -> None:
+        """Publish a version while the caller holds the location row lock."""
+        await db.execute(
+            update(FileVersion)
+            .where(
+                FileVersion.location_id == location.id,
+                FileVersion.status == "approved",
+                FileVersion.deleted_at.is_(None),
+            )
+            .values(status="superseded")
+        )
+
+        version.status = "approved"
+        location.current_approved_version_id = version.id
+        location.updated_at = datetime.now(timezone.utc)
+
+        await db.flush()
+        db.info.setdefault("cache_invalidation_slugs", set()).add(location.slug)
+
+    async def _apply_submission_governance(
+        self,
+        db: AsyncSession,
+        version: FileVersion,
+    ) -> None:
+        """Apply the location policy to a newly created pending version."""
+        result = await db.execute(
+            select(Location)
+            .where(
+                Location.id == version.location_id,
+                Location.deleted_at.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        location = result.scalar_one_or_none()
+        if location is None:
+            raise ValueError("Location not found")
+
+        if location.approval_required:
+            return
+
+        await self._publish_version(db, version, location)
+
     async def approve_version(
         self,
         db: AsyncSession,
@@ -45,27 +93,11 @@ class ApprovalService:
         if version.deleted_at is not None:
             raise ValueError("Cannot approve a deleted version")
 
-        await db.execute(
-            update(FileVersion)
-            .where(
-                FileVersion.location_id == version.location_id,
-                FileVersion.status == "approved",
-                FileVersion.deleted_at.is_(None),
-            )
-            .values(status="superseded")
-        )
-
-        now = datetime.now(timezone.utc)
-        version.status = "approved"
         version.reviewed_by = reviewed_by
-        version.reviewed_at = now
+        version.reviewed_at = datetime.now(timezone.utc)
         version.review_notes = notes
 
-        location.current_approved_version_id = version.id
-        location.updated_at = now
-
-        await db.flush()
-        db.info.setdefault("cache_invalidation_slugs", set()).add(location.slug)
+        await self._publish_version(db, version, location)
         return version, location
 
     async def reject_version(
@@ -195,7 +227,7 @@ class ApprovalService:
 
         # Count query
         count_query = select(func.count(FileVersion.id)).where(*base_conditions)
-        total = (await db.execute(count_query)).scalar()
+        total = (await db.execute(count_query)).scalar_one()
 
         # Data query
         data_query = (
@@ -205,7 +237,7 @@ class ApprovalService:
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
-        versions = (await db.execute(data_query)).scalars().all()
+        versions = list((await db.execute(data_query)).scalars().all())
 
         return versions, total
 

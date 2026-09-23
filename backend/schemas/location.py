@@ -8,6 +8,7 @@ class LocationCreate(BaseModel):
 
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9\-]+$")
     display_name: str = Field(..., min_length=1, max_length=255)
+    approval_required: bool = Field(default=True, strict=True)
     description: str | None = None
     reminder_email: str | None = None
 
@@ -16,6 +17,7 @@ class LocationUpdate(BaseModel):
     """Partial update — only send the fields you want to change."""
 
     display_name: str | None = Field(None, min_length=1, max_length=255)
+    approval_required: bool = Field(default=True, strict=True)
     description: str | None = None
     reminder_email: str | None = None
 
@@ -28,6 +30,7 @@ class LocationResponse(BaseModel):
     display_name: str
     description: str | None
     reminder_email: str | None
+    approval_required: bool
     current_approved_version_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
