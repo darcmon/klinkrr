@@ -1,12 +1,10 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from backend.db.session import get_db
 from backend.dependencies import get_current_admin
 from backend.models.admin_user import AdminUser
-from backend.models.file_version import FileVersion
 from backend.models.location import Location
 from backend.schemas.file_version import (
     ApprovalRequest,
@@ -28,23 +26,17 @@ async def list_pending(
     versions = await approval_service.get_pending_versions(db)
 
     # Fetch location info for each version
-    results = []
-    for v in versions:
-        location = await db.get(Location, v.location_id)
+    results: list[PendingVersionResponse] = []
+    for version in versions:
+        location = await db.get(Location, version.location_id)
+        if location is None:
+            raise RuntimeError("Version references a missing location")
+
         results.append(
-            PendingVersionResponse(
-                id=v.id,
-                kind=v.kind,
-                link_url=v.link_url,
-                link_mode=v.link_mode,
+            PendingVersionResponse.from_version(
+                version,
                 location_slug=location.slug,
                 location_display_name=location.display_name,
-                original_filename=v.original_filename,
-                content_type=v.content_type,
-                file_size_bytes=v.file_size_bytes,
-                version_number=v.version_number,
-                uploaded_by=v.uploaded_by,
-                uploaded_at=v.uploaded_at,
             )
         )
     return results
@@ -52,7 +44,7 @@ async def list_pending(
 
 @router.post("/versions/{version_id}/approve", response_model=ApprovalResponse)
 async def approve_version(
-    version_id: str,
+    version_id: UUID,
     request: Request,
     body: ApprovalRequest | None = None,
     db: AsyncSession = Depends(get_db),
@@ -78,11 +70,8 @@ async def approve_version(
         details={"location_slug": location.slug, "notes": body.notes if body else None},
     )
 
-    return ApprovalResponse(
-        id=version.id,
-        status=version.status,
-        reviewed_by=admin.email,
-        reviewed_at=version.reviewed_at,
+    return ApprovalResponse.from_version(
+        version,
         location_slug=location.slug,
         now_serving=True,
     )
@@ -90,7 +79,7 @@ async def approve_version(
 
 @router.post("/versions/{version_id}/reject", response_model=ApprovalResponse)
 async def reject_version(
-    version_id: str,
+    version_id: UUID,
     request: Request,
     body: ApprovalRequest | None = None,
     db: AsyncSession = Depends(get_db),
@@ -98,7 +87,7 @@ async def reject_version(
 ):
     """Reject a pending file version."""
     try:
-        version = await approval_service.reject_version(
+        version, location = await approval_service.reject_version(
             db=db,
             version_id=version_id,
             reviewed_by=admin.email,
@@ -106,8 +95,6 @@ async def reject_version(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-
-    location = await db.get(Location, version.location_id)
 
     await audit_service.log(
         db=db,
@@ -119,11 +106,8 @@ async def reject_version(
         details={"location_slug": location.slug, "notes": body.notes if body else None},
     )
 
-    return ApprovalResponse(
-        id=version.id,
-        status=version.status,
-        reviewed_by=admin.email,
-        reviewed_at=version.reviewed_at,
+    return ApprovalResponse.from_version(
+        version,
         location_slug=location.slug,
         now_serving=False,
     )

@@ -55,7 +55,7 @@ class ApprovalService:
         await db.flush()
         db.info.setdefault("cache_invalidation_slugs", set()).add(location.slug)
 
-    async def _apply_submission_governance(
+    async def apply_submission_governance(
         self,
         db: AsyncSession,
         version: FileVersion,
@@ -106,8 +106,8 @@ class ApprovalService:
         version_id: UUID,
         reviewed_by: str,
         notes: str | None = None,
-    ) -> FileVersion:
-        version, _location = await self._get_version_for_review(db, version_id)
+    ) -> tuple[FileVersion, Location]:
+        version, location = await self._get_version_for_review(db, version_id)
 
         if version.status != "pending":
             raise ValueError(f"Cannot reject version with status '{version.status}'")
@@ -120,7 +120,7 @@ class ApprovalService:
         version.review_notes = notes
 
         await db.flush()
-        return version
+        return version, location
 
     async def get_pending_versions(self, db: AsyncSession) -> list[FileVersion]:
         result = await db.execute(

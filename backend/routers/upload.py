@@ -43,10 +43,16 @@ async def upload_file(
         raise HTTPException(status_code=404, detail="Location not found")
 
     # 2. Validate content type
-    if file.content_type not in settings.allowed_file_types_list:
+    filename = file.filename
+    content_type = file.content_type
+
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    if content_type is None or content_type not in settings.allowed_file_types_list:
         raise HTTPException(
             status_code=400,
-            detail=f"File type '{file.content_type}' is not allowed. "
+            detail=f"File type '{content_type}' is not allowed. "
             f"Allowed: {', '.join(settings.allowed_file_types_list)}",
         )
 
@@ -64,19 +70,21 @@ async def upload_file(
         )
 
     # 4. Upload to S3
-    s3_key = file_service.generate_s3_key(slug, file.filename)
-    await file_service.upload_file(s3_key, file_data, file.content_type)
+    s3_key = file_service.generate_s3_key(slug, filename)
+    await file_service.upload_file(s3_key, file_data, content_type)
 
     # 5. Create pending version in DB
     version = await approval_service.create_pending_version(
         db=db,
         location_id=location.id,
-        original_filename=file.filename,
-        content_type=file.content_type,
+        original_filename=filename,
+        content_type=content_type,
         file_size_bytes=file_size,
         s3_key=s3_key,
         uploaded_by=admin.email,
     )
+
+    await approval_service.apply_submission_governance(db, version)
 
     # 6. Audit log
     await audit_service.log(
@@ -94,14 +102,21 @@ async def upload_file(
         },
     )
 
-    return FileVersionUploadResponse(
-        id=version.id,
-        location_slug=slug,
-        original_filename=version.original_filename,
-        version_number=version.version_number,
-        status=version.status,
-        uploaded_at=version.uploaded_at,
-    )
+    if version.status == "approved":
+        await audit_service.log(
+            db=db,
+            action="auto_publish",
+            entity_type="file_version",
+            entity_id=version.id,
+            actor=admin.email,
+            request=request,
+            details={
+                "location_slug": slug,
+                "approval_required": False,
+            },
+        )
+
+    return FileVersionUploadResponse.from_version(version, location_slug=slug)
 
 
 @router.post(
@@ -149,6 +164,8 @@ async def create_link(
         uploaded_by=admin.email,
     )
 
+    await approval_service.apply_submission_governance(db, version)
+
     await audit_service.log(
         db=db,
         action="create_link",
@@ -159,12 +176,18 @@ async def create_link(
         details={"location_slug": slug, "link_mode": version.link_mode},
     )
 
-    return LinkVersionCreateResponse(
-        id=version.id,
-        location_slug=slug,
-        link_url=version.link_url,
-        link_mode=version.link_mode,
-        version_number=version.version_number,
-        status=version.status,
-        uploaded_at=version.uploaded_at,
-    )
+    if version.status == "approved":
+        await audit_service.log(
+            db=db,
+            action="auto_publish",
+            entity_type="file_version",
+            entity_id=version.id,
+            actor=admin.email,
+            request=request,
+            details={
+                "location_slug": slug,
+                "approval_required": False,
+            },
+        )
+
+    return LinkVersionCreateResponse.from_version(version, location_slug=slug)

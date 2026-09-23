@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, field_validator
 
+from backend.models.file_version import FileVersion
 from backend.services.url_validator import validate_link_url
 
 
@@ -20,15 +21,29 @@ class LinkVersionCreate(BaseModel):
 
 
 class LinkVersionCreateResponse(BaseModel):
-    """Returned after a link version is created for review."""
+    """Returned after a link version is submitted."""
 
     id: uuid.UUID
     location_slug: str
     link_url: str
     link_mode: Literal["redirect"]
     version_number: int
-    status: Literal["pending"]
+    status: Literal["pending", "approved"]
     uploaded_at: datetime
+
+    @classmethod
+    def from_version(cls, version: FileVersion, *, location_slug: str) -> Self:
+        return cls.model_validate(
+            {
+                "id": version.id,
+                "location_slug": location_slug,
+                "link_url": version.link_url,
+                "link_mode": version.link_mode,
+                "version_number": version.version_number,
+                "status": version.status,
+                "uploaded_at": version.uploaded_at,
+            }
+        )
 
 
 class FileVersionResponse(BaseModel):
@@ -42,7 +57,7 @@ class FileVersionResponse(BaseModel):
     original_filename: str | None
     content_type: str | None
     file_size_bytes: int | None
-    status: str
+    status: Literal["pending", "approved", "rejected", "superseded"]
     version_number: int
     uploaded_by: str
     uploaded_at: datetime
@@ -60,8 +75,21 @@ class FileVersionUploadResponse(BaseModel):
     location_slug: str
     original_filename: str
     version_number: int
-    status: str
+    status: Literal["pending", "approved"]
     uploaded_at: datetime
+
+    @classmethod
+    def from_version(cls, version: FileVersion, *, location_slug: str) -> Self:
+        return cls.model_validate(
+            {
+                "id": version.id,
+                "location_slug": location_slug,
+                "original_filename": version.original_filename,
+                "version_number": version.version_number,
+                "status": version.status,
+                "uploaded_at": version.uploaded_at,
+            }
+        )
 
 
 class ApprovalRequest(BaseModel):
@@ -74,11 +102,30 @@ class ApprovalResponse(BaseModel):
     """Returned after approve/reject."""
 
     id: uuid.UUID
-    status: str
+    status: Literal["approved", "rejected"]
     reviewed_by: str
     reviewed_at: datetime
     location_slug: str
     now_serving: bool
+
+    @classmethod
+    def from_version(
+        cls,
+        version: FileVersion,
+        *,
+        location_slug: str,
+        now_serving: bool,
+    ) -> Self:
+        return cls.model_validate(
+            {
+                "id": version.id,
+                "status": version.status,
+                "reviewed_by": version.reviewed_by,
+                "reviewed_at": version.reviewed_at,
+                "location_slug": location_slug,
+                "now_serving": now_serving,
+            }
+        )
 
 
 class PendingVersionResponse(BaseModel):
@@ -96,6 +143,31 @@ class PendingVersionResponse(BaseModel):
     version_number: int
     uploaded_by: str
     uploaded_at: datetime
+
+    @classmethod
+    def from_version(
+        cls,
+        version: FileVersion,
+        *,
+        location_slug: str,
+        location_display_name: str,
+    ) -> Self:
+        return cls.model_validate(
+            {
+                "id": version.id,
+                "kind": version.kind,
+                "link_url": version.link_url,
+                "link_mode": version.link_mode,
+                "location_slug": location_slug,
+                "location_display_name": location_display_name,
+                "original_filename": version.original_filename,
+                "content_type": version.content_type,
+                "file_size_bytes": version.file_size_bytes,
+                "version_number": version.version_number,
+                "uploaded_by": version.uploaded_by,
+                "uploaded_at": version.uploaded_at,
+            }
+        )
 
 
 class VersionArchiveResponse(BaseModel):

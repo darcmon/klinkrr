@@ -29,6 +29,7 @@ async def test_governance_update_preserves_publication_and_audits_changes(
     initial,
     payload,
     expected,
+    should_audit,
 ):
     now = datetime.now(timezone.utc)
     published_version_id = uuid4()
@@ -78,6 +79,9 @@ async def test_governance_update_preserves_publication_and_audits_changes(
         assert response.json()["description"] == payload["description"]
 
     if initial == expected:
+        if not should_audit:
+            audit_log.assert_not_called()
+            return
         audit_log.assert_not_called()
         return
     audit_log.assert_awaited_once()

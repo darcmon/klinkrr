@@ -46,7 +46,7 @@ async def test_rejecting_reviewed_version_returns_readable_error(monkeypatch):
     assert response.json() == {"detail": "Cannot reject version with status 'approved'"}
     reject_version.assert_awaited_once_with(
         db=db,
-        version_id=str(version_id),
+        version_id=version_id,
         reviewed_by=admin.email,
         notes=None,
     )

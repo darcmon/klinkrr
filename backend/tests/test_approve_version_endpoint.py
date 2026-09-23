@@ -21,6 +21,7 @@ async def test_approve_version_returns_success_and_records_audit(monkeypatch):
     version = SimpleNamespace(
         id=uuid4(),
         status="approved",
+        reviewed_by=admin.email,
         reviewed_at=datetime(2026, 9, 14, tzinfo=timezone.utc),
     )
     location = SimpleNamespace(slug="documents")
@@ -60,7 +61,7 @@ async def test_approve_version_returns_success_and_records_audit(monkeypatch):
 
     approve_version.assert_awaited_once_with(
         db=db,
-        version_id=str(version.id),
+        version_id=version.id,
         reviewed_by=admin.email,
         notes="Ready to publish",
     )

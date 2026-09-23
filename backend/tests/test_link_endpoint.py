@@ -151,6 +151,12 @@ async def test_web_risk_failure_does_not_create_version(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_clear_url_creates_pending_version(monkeypatch):
+    apply_governance = AsyncMock()
+    monkeypatch.setattr(
+        upload.approval_service,
+        "apply_submission_governance",
+        apply_governance,
+    )
     db = MagicMock(spec=AsyncSession)
     location = SimpleNamespace(id=uuid4(), slug="handbook")
 
@@ -206,6 +212,8 @@ async def test_clear_url_creates_pending_version(monkeypatch):
     assert body["link_mode"] == "redirect"
     assert body["version_number"] == 3
     assert body["status"] == "pending"
+
+    apply_governance.assert_awaited_once_with(db, version)
 
     web_risk.is_flagged.assert_awaited_once_with(url)
     create_version.assert_awaited_once_with(

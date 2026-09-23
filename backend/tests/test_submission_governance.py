@@ -40,7 +40,7 @@ async def test_submission_governance(approval_required, kind):
     db.execute.return_value = location_result
 
     service = ApprovalService()
-    await service._apply_submission_governance(db, version)
+    await service.apply_submission_governance(db, version)
 
     if approval_required:
         assert version.status == "pending"
