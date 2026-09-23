@@ -156,21 +156,6 @@ header p {
   border-top: 1px solid var(--color-border);
 }
 
-.form-control {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-small);
-  background-color: var(--color-surface);
-  color: var(--color-text);
-}
-
-.form-control:disabled {
-  opacity: 0.6;
-}
-
 .login-error {
   margin: 0;
   padding: var(--space-3);

@@ -5,6 +5,7 @@ import api from '../api/client';
 
 import BaseField from '../components/BaseField.vue';
 import BaseButton from '../components/BaseButton.vue';
+import StateMessage from '../components/StateMessage.vue';
 
 interface Location {
   slug: string;
@@ -185,19 +186,28 @@ onMounted(loadLocations);
       </p>
     </header>
 
-    <p v-if="loadingLocations" role="status">Loading locations…</p>
+    <StateMessage v-if="loadingLocations" message="Loading locations…" />
 
-    <div v-else-if="locationsError" class="state-panel">
-      <p class="error" role="alert">{{ locationsError }}</p>
-      <BaseButton variant="secondary" @click="loadLocations">
-        Try again
-      </BaseButton>
-    </div>
+    <StateMessage
+      v-else-if="locationsError"
+      tone="error"
+      :message="locationsError"
+    >
+      <template #actions>
+        <BaseButton variant="secondary" @click="loadLocations">
+          Try again
+        </BaseButton>
+      </template>
+    </StateMessage>
 
-    <div v-else-if="locations.length === 0" class="state-panel">
-      <p>Create a location before submitting a version.</p>
-      <router-link to="/locations">Go to Locations →</router-link>
-    </div>
+    <StateMessage
+      v-else-if="locations.length === 0"
+      message="Create a location before submitting a version."
+    >
+      <template #actions>
+        <router-link to="/locations">Go to Locations →</router-link>
+      </template>
+    </StateMessage>
 
     <BaseField
       v-else
@@ -368,31 +378,6 @@ onMounted(loadLocations);
 }
 
 .upload header p {
-  margin: 0;
-}
-
-.form-control {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-small);
-  background-color: var(--color-surface);
-  color: var(--color-text);
-}
-
-.state-panel {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-medium);
-  background-color: var(--color-surface);
-}
-
-.state-panel p {
   margin: 0;
 }
 

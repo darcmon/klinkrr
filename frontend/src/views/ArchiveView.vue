@@ -344,32 +344,6 @@ watch(
   max-width: 320px;
 }
 
-.form-control {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-small);
-  background-color: var(--color-surface);
-  color: var(--color-text);
-}
-
-.state-panel {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
-  margin: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-medium);
-  background-color: var(--color-surface);
-}
-
-.state-panel p {
-  margin: 0;
-}
-
 .pagination {
   display: flex;
   flex-wrap: wrap;

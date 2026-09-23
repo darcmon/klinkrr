@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, ForeignKey, Index
+from sqlalchemy import Boolean, String, Text, ForeignKey, Index, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 
@@ -20,12 +20,23 @@ class Location(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    approval_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+    )
+
     # Points to the currently approved file version.
     # This is NULL when no file has been approved yet.
     # use_alter=True is needed because FileVersion also references Location (circular FK).
     current_approved_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("file_versions.id", use_alter=True, name="fk_locations_current_approved_version"),
+        ForeignKey(
+            "file_versions.id",
+            use_alter=True,
+            name="fk_locations_current_approved_version",
+        ),
         nullable=True,
     )
 

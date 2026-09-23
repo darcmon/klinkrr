@@ -8,6 +8,7 @@ import BaseField from '../components/BaseField.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseButton from '../components/BaseButton.vue';
 import StatusBadge from '../components/StatusBadge.vue';
+import StateMessage from '../components/StateMessage.vue';
 import VersionSummary from '../components/VersionSummary.vue';
 
 const pending = ref<PendingVersion[]>([]);
@@ -55,6 +56,9 @@ async function approve(id: string) {
 
     successMessage.value = 'Version approved.';
     await loadPending();
+
+    await nextTick();
+    dashboardHeading.value?.focus();
   } catch (e) {
     actionError.value = e instanceof Error ? e.message : 'Approve failed';
   } finally {
@@ -120,29 +124,28 @@ onMounted(loadPending);
       </p>
     </header>
 
-    <p v-if="successMessage" class="success-banner" role="status">
-      {{ successMessage }}
-    </p>
+    <StateMessage
+      v-if="successMessage"
+      tone="success"
+      :message="successMessage"
+    />
 
-    <p v-if="actionError" class="error-banner" role="alert">
-      {{ actionError }}
-    </p>
+    <StateMessage v-if="actionError" tone="error" :message="actionError" />
 
-    <p v-if="loading" role="status">Loading pending versions…</p>
+    <StateMessage v-if="loading" message="Loading pending versions…" />
 
-    <div v-else-if="loadError" class="load-error">
-      <p class="error-banner" role="alert">
-        {{ loadError }}
-      </p>
+    <StateMessage v-else-if="loadError" tone="error" :message="loadError">
+      <template #actions>
+        <BaseButton variant="secondary" @click="loadPending">
+          Try again
+        </BaseButton>
+      </template>
+    </StateMessage>
 
-      <BaseButton variant="secondary" @click="loadPending">
-        Try again
-      </BaseButton>
-    </div>
-
-    <p v-else-if="pending.length === 0" role="status">
-      No pending versions. Everything's up to date.
-    </p>
+    <StateMessage
+      v-else-if="pending.length === 0"
+      message="No pending versions to review."
+    />
 
     <template v-else>
       <ul class="pending-list" role="list">
@@ -151,11 +154,18 @@ onMounted(loadPending);
             <StatusBadge status="pending" />
             <VersionSummary :version="v" />
 
-            <span class="meta">
-              v{{ v.version_number }} · {{ v.location_display_name }} (/{{
-                v.location_slug
-              }})
-            </span>
+            <div class="meta">
+              <span
+                >v{{ v.version_number }} · {{ v.location_display_name }}</span
+              >
+
+              <router-link
+                :to="{ name: 'archive', params: { slug: v.location_slug } }"
+                class="archive-link text-mono"
+              >
+                /{{ v.location_slug }} — View history →
+              </router-link>
+            </div>
 
             <span class="meta"> Submitted by {{ v.uploaded_by }} </span>
             <time class="meta" :datetime="v.uploaded_at">
@@ -185,91 +195,93 @@ onMounted(loadPending);
           </div>
         </li>
       </ul>
-      <table class="pending-table">
-        <caption>
-          Pending approvals
-        </caption>
+      <div class="pending-table data-table-frame">
+        <table class="data-table">
+          <caption class="visually-hidden">
+            Pending approvals
+          </caption>
 
-        <colgroup>
-          <col style="width: 30%" />
-          <col style="width: 20%" />
-          <col style="width: 10%" />
-          <col style="width: 22%" />
-          <col style="width: 18%" />
-        </colgroup>
+          <colgroup>
+            <col style="width: 30%" />
+            <col style="width: 20%" />
+            <col style="width: 10%" />
+            <col style="width: 22%" />
+            <col style="width: 18%" />
+          </colgroup>
 
-        <thead>
-          <tr>
-            <th scope="col">Content</th>
-            <th scope="col">Location</th>
-            <th scope="col">Version</th>
-            <th scope="col">Submitted</th>
-            <th scope="col">Actions</th>
-          </tr>
-        </thead>
+          <thead>
+            <tr>
+              <th scope="col">Content</th>
+              <th scope="col">Location</th>
+              <th scope="col">Version</th>
+              <th scope="col">Submitted</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
 
-        <tbody>
-          <tr v-for="v in pending" :key="v.id">
-            <td>
-              <div class="info">
-                <StatusBadge status="pending" />
-                <VersionSummary :version="v" />
-              </div>
-            </td>
+          <tbody>
+            <tr v-for="v in pending" :key="v.id">
+              <td>
+                <div class="info">
+                  <StatusBadge status="pending" />
+                  <VersionSummary :version="v" />
+                </div>
+              </td>
 
-            <td>
-              <div class="info">
-                <span>{{ v.location_display_name }}</span>
-                <router-link
-                  :to="{ name: 'archive', params: { slug: v.location_slug } }"
-                  class="text-mono"
-                >
-                  /{{ v.location_slug }}
-                </router-link>
-              </div>
-            </td>
+              <td>
+                <div class="info">
+                  <span>{{ v.location_display_name }}</span>
+                  <router-link
+                    :to="{ name: 'archive', params: { slug: v.location_slug } }"
+                    class="text-mono"
+                  >
+                    /{{ v.location_slug }}
+                  </router-link>
+                </div>
+              </td>
 
-            <td class="text-mono">v{{ v.version_number }}</td>
+              <td class="text-mono">v{{ v.version_number }}</td>
 
-            <td>
-              <div class="info">
-                <span>{{ v.uploaded_by }}</span>
+              <td>
+                <div class="info">
+                  <span>{{ v.uploaded_by }}</span>
 
-                <time class="meta" :datetime="v.uploaded_at">
-                  {{ formatDate(v.uploaded_at) }}
-                </time>
-              </div>
-            </td>
+                  <time class="meta" :datetime="v.uploaded_at">
+                    {{ formatDate(v.uploaded_at) }}
+                  </time>
+                </div>
+              </td>
 
-            <td>
-              <div class="table-actions">
-                <BaseButton
-                  :disabled="actioningId !== null"
-                  @click="approve(v.id)"
-                >
-                  {{
-                    actioningId === v.id && actionKind === 'approve'
-                      ? 'Approving…'
-                      : 'Approve'
-                  }}
-                </BaseButton>
+              <td>
+                <div class="data-table-actions">
+                  <BaseButton
+                    :disabled="actioningId !== null"
+                    @click="approve(v.id)"
+                  >
+                    {{
+                      actioningId === v.id && actionKind === 'approve'
+                        ? 'Approving…'
+                        : 'Approve'
+                    }}
+                  </BaseButton>
 
-                <BaseButton
-                  variant="secondary"
-                  :disabled="actioningId !== null"
-                  @click="openReject(v)"
-                >
-                  {{
-                    actioningId === v.id && actionKind === 'reject'
-                      ? 'Rejecting…'
-                      : 'Reject…'
-                  }}
-                </BaseButton>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                  <BaseButton
+                    variant="secondary"
+                    :disabled="actioningId !== null"
+                    @click="openReject(v)"
+                  >
+                    {{
+                      actioningId === v.id && actionKind === 'reject'
+                        ? 'Rejecting…'
+                        : 'Reject…'
+                    }}
+                  </BaseButton>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
     <BaseModal
       v-if="rejectionTarget"
@@ -307,9 +319,11 @@ onMounted(loadPending);
         />
       </BaseField>
 
-      <p v-if="rejectionError" class="error-banner" role="alert">
-        {{ rejectionError }}
-      </p>
+      <StateMessage
+        v-if="rejectionError"
+        tone="error"
+        :message="rejectionError"
+      />
 
       <template #actions="{ requestClose }">
         <BaseButton
@@ -367,6 +381,15 @@ onMounted(loadPending);
   justify-items: start;
 }
 
+.archive-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .meta {
   color: var(--color-muted);
   font-size: var(--text-small);
@@ -392,38 +415,6 @@ onMounted(loadPending);
 
 .pending-table {
   display: none;
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  background-color: var(--color-surface);
-}
-
-.pending-table caption {
-  padding: var(--space-4);
-  text-align: left;
-  font-weight: var(--weight-semibold);
-}
-
-.pending-table th,
-.pending-table td {
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  vertical-align: top;
-  overflow-wrap: anywhere;
-}
-
-.pending-table th {
-  color: var(--color-muted);
-  background-color: var(--color-surface-muted);
-  font-size: var(--text-small);
-  font-weight: var(--weight-semibold);
-}
-
-.table-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 @media (min-width: 768px) {
@@ -432,29 +423,7 @@ onMounted(loadPending);
   }
 
   .pending-table {
-    display: table;
+    display: block;
   }
-}
-
-.success-banner {
-  margin: 0;
-  padding: var(--space-4);
-  border-radius: var(--radius-medium);
-  color: var(--color-approved-text);
-  background-color: var(--color-approved-bg);
-}
-
-.error-banner {
-  margin: 0;
-  padding: var(--space-4);
-  border-radius: var(--radius-medium);
-  color: var(--color-rejected-text);
-  background-color: var(--color-rejected-bg);
-}
-
-.load-error {
-  display: grid;
-  gap: var(--space-3);
-  justify-items: start;
 }
 </style>

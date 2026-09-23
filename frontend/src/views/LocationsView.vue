@@ -4,6 +4,7 @@ import api, { API_URL } from '../api/client';
 
 import BaseField from '../components/BaseField.vue';
 import BaseButton from '../components/BaseButton.vue';
+import StateMessage from '../components/StateMessage.vue';
 
 interface Location {
   id: string;
@@ -169,21 +170,20 @@ onMounted(loadLocations);
     </form>
 
     <!-- List -->
-    <p v-if="loading" class="state-panel" role="status">Loading locations…</p>
+    <StateMessage v-if="loading" message="Loading locations…" />
 
-    <div v-else-if="error" class="state-panel">
-      <p class="form-error" role="alert">{{ error }}</p>
-      <BaseButton variant="secondary" @click="loadLocations">
-        Try again
-      </BaseButton>
-    </div>
+    <StateMessage v-else-if="error" tone="error" :message="error">
+      <template #actions>
+        <BaseButton variant="secondary" @click="loadLocations">
+          Try again
+        </BaseButton>
+      </template>
+    </StateMessage>
 
-    <div v-else-if="locations.length === 0" class="state-panel" role="status">
-      <h2>No locations yet</h2>
-      <p>
-        Create a location to give your files and links a permanent public URL.
-      </p>
-    </div>
+    <StateMessage
+      v-else-if="locations.length === 0"
+      message="No locations yet. Create a location to give your files and links a permanent public URL."
+    />
     <template v-else>
       <ul class="location-list" role="list">
         <li v-for="loc in locations" :key="loc.id" class="location-item">
@@ -216,9 +216,9 @@ onMounted(loadLocations);
           </div>
         </li>
       </ul>
-      <div class="location-table">
-        <table>
-          <caption>
+      <div class="location-table data-table-frame">
+        <table class="data-table">
+          <caption class="visually-hidden">
             Locations and publishing status
           </caption>
 
@@ -261,7 +261,7 @@ onMounted(loadLocations);
               </td>
 
               <td>
-                <div class="location-actions">
+                <div class="data-table-actions">
                   <a
                     v-if="loc.current_approved_version_id"
                     :href="publishedUrl(loc.slug)"
@@ -337,52 +337,11 @@ onMounted(loadLocations);
 
 .location-table {
   display: none;
-  min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-medium);
-  background-color: var(--color-surface);
-}
-
-.location-table table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-}
-
-.location-table caption {
-  padding: var(--space-4);
-  text-align: left;
-  font-weight: var(--weight-semibold);
-}
-
-.location-table th,
-.location-table td {
-  padding: var(--space-4);
-  text-align: left;
-  vertical-align: top;
-  overflow-wrap: anywhere;
-  border-top: 1px solid var(--color-border);
-}
-
-.location-table thead th {
-  background-color: var(--color-surface-muted);
-  font-size: var(--text-small);
-  font-weight: var(--weight-semibold);
-}
-
-.location-table tbody th {
-  font-weight: var(--weight-normal);
 }
 
 .location-table .serving,
 .location-table .empty {
   display: inline-block;
-}
-
-.location-actions {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-2);
 }
 
 @media (min-width: 768px) {
@@ -393,22 +352,6 @@ onMounted(loadLocations);
   .location-table {
     display: block;
   }
-}
-
-.state-panel {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
-  margin: 0;
-  padding: var(--space-6);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-medium);
-  background-color: var(--color-surface);
-}
-
-.state-panel h2,
-.state-panel p {
-  margin: 0;
 }
 
 .slug {
@@ -452,25 +395,6 @@ onMounted(loadLocations);
 
 .create-form h2 {
   margin: 0;
-}
-
-.form-control {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-small);
-  background-color: var(--color-surface);
-  color: var(--color-text);
-}
-
-textarea.form-control {
-  resize: vertical;
-}
-
-.form-control:disabled {
-  opacity: 0.6;
 }
 
 .form-error {
