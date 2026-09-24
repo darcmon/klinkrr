@@ -1,6 +1,7 @@
 import uuid
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
@@ -34,3 +35,13 @@ class AdminUserResponse(BaseModel):
     organization: OrganizationSummary | None
     role: str | None
     permissions: list[str]
+    sign_in_methods: list[Literal["password", "microsoft", "google"]]
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str = Field(..., min_length=1, max_length=255)
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=12, max_length=128)

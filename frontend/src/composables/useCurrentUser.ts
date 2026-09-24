@@ -15,28 +15,35 @@ watch(token, () => {
   inFlight = null;
 });
 
+function fetchUser(): Promise<CurrentUser | null> {
+  const requestedWith = token.value;
+  const request = (async () => {
+    const data: CurrentUser | undefined = await api.get('/admin/me');
+    // Ignore a response for a token that has since changed.
+    if (token.value === requestedWith) user.value = data ?? null;
+    return user.value;
+  })();
+
+  inFlight = request;
+  request
+    .finally(() => {
+      if (inFlight === request) inFlight = null;
+    })
+    .catch(() => {});
+
+  return request;
+}
+
 export function useCurrentUser() {
   async function load(): Promise<CurrentUser | null> {
     if (user.value) return user.value;
+    return inFlight ?? fetchUser();
+  }
 
-    if (!inFlight) {
-      const requestedWith = token.value;
-      const request = (async () => {
-        const data: CurrentUser | undefined = await api.get('/admin/me');
-        // Ignore a response for a token that has since changed.
-        if (token.value === requestedWith) user.value = data ?? null;
-        return user.value;
-      })();
-
-      inFlight = request;
-      request
-        .finally(() => {
-          if (inFlight === request) inFlight = null;
-        })
-        .catch(() => {});
-    }
-
-    return inFlight;
+  // Reload after anything that changes the user, their role or organization.
+  // Keeps the current value until the new one arrives, so the UI doesn't flicker.
+  function refresh(): Promise<CurrentUser | null> {
+    return fetchUser();
   }
 
   // Server permissions only; never infer them from the role name.
@@ -44,5 +51,5 @@ export function useCurrentUser() {
     return user.value?.permissions.includes(permission) ?? false;
   }
 
-  return { user, load, can };
+  return { user, load, refresh, can };
 }

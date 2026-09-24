@@ -11,6 +11,7 @@ from backend.routers.auth import router as auth_router
 from backend.routers.oauth import router as oauth_router
 from backend.routers.approval import router as approval_router
 from backend.routers.locations import router as locations_router
+from backend.routers.organization import router as organization_router
 from backend.routers.archive import router as archive_router
 from backend.routers.public import router as public_router
 from backend.routers.upload import router as upload_router
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth_router)
     app.include_router(upload_router)
     app.include_router(locations_router)
+    app.include_router(organization_router)
     app.include_router(approval_router)
     app.include_router(archive_router)
 

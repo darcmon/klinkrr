@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.db.session import get_db
-from backend.dependencies import create_access_token
+from backend.dependencies import create_user_token
 from backend.models.admin_user import AdminUser
 import logging
 
@@ -116,7 +116,7 @@ async def _handle_callback(provider: str, request: Request, db: AsyncSession):
     user.last_login_at = datetime.now(timezone.utc)
     await db.flush()
 
-    jwt_token = create_access_token({"sub": user.email})
+    jwt_token = create_user_token(user)
     return RedirectResponse(f"{settings.frontend_url}/auth/callback?token={jwt_token}")
 
 

@@ -37,6 +37,7 @@ function handleLogout() {
         Locations
       </router-link>
       <router-link to="/upload">Upload</router-link>
+      <router-link to="/settings">Settings</router-link>
     </nav>
 
     <div class="header-actions">

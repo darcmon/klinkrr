@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncIterator
 
@@ -56,6 +57,12 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
 
+def create_user_token(user: AdminUser) -> str:
+    # The subject is the user id, not the email, so an email change doesn't
+    # invalidate sessions or break the link to the account.
+    return create_access_token({"sub": str(user.id)})
+
+
 async def get_current_admin(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
@@ -66,12 +73,13 @@ async def get_current_admin(
     # Step 1: Decode and verify the JWT
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-            )
+        user_id = uuid.UUID(payload.get("sub") or "")
+    except ValueError:
+        # Includes tokens issued before the subject became the user id.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -81,7 +89,7 @@ async def get_current_admin(
     # Step 2: Look up the user in the db
     result = await db.execute(
         select(AdminUser).where(
-            AdminUser.email == email,
+            AdminUser.id == user_id,
             AdminUser.is_active.is_(True),
         )
     )

@@ -180,7 +180,14 @@ async def test_other_organizations_locations_are_not_found(path):
 
 @pytest.mark.asyncio
 async def test_me_returns_organization_role_and_permissions(monkeypatch):
-    admin = SimpleNamespace(id=uuid4(), email="a@example.com", display_name="A")
+    admin = SimpleNamespace(
+        id=uuid4(),
+        email="a@example.com",
+        display_name="A",
+        password_hash="hash",
+        microsoft_sub=None,
+        google_sub="google-sub",
+    )
     member = membership("approver", allow_self_approval=False)
     monkeypatch.setattr(auth, "load_membership", AsyncMock(return_value=member))
 
@@ -195,11 +202,19 @@ async def test_me_returns_organization_role_and_permissions(monkeypatch):
         "allow_self_approval": False,
     }
     assert body["permissions"] == permissions_for("approver")
+    assert body["sign_in_methods"] == ["password", "google"]
 
 
 @pytest.mark.asyncio
 async def test_me_works_without_a_membership(monkeypatch):
-    admin = SimpleNamespace(id=uuid4(), email="a@example.com", display_name="A")
+    admin = SimpleNamespace(
+        id=uuid4(),
+        email="a@example.com",
+        display_name="A",
+        password_hash=None,
+        microsoft_sub="ms-sub",
+        google_sub=None,
+    )
     monkeypatch.setattr(auth, "load_membership", AsyncMock(return_value=None))
 
     async with client_for(auth.router, MagicMock(), admin, None) as client:

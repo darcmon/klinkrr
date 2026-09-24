@@ -9,6 +9,7 @@ import DashboardView from '../views/DashboardView.vue';
 import LocationsView from '../views/LocationsView.vue';
 import ArchiveView from '../views/ArchiveView.vue';
 import UploadView from '../views/UploadView.vue';
+import SettingsView from '../views/SettingsView.vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -32,6 +33,7 @@ const routes: RouteRecordRaw[] = [
     props: true,
   },
   { path: '/upload', name: 'upload', component: UploadView },
+  { path: '/settings', name: 'settings', component: SettingsView },
   { path: '/', redirect: '/dashboard' },
 ];
 
