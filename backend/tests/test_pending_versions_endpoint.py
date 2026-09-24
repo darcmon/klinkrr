@@ -35,7 +35,7 @@ async def test_pending_list_includes_link_fields(monkeypatch):
 
     db = MagicMock(spec=AsyncSession)
     db.get.return_value = location
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     get_pending = AsyncMock(return_value=[version])
     monkeypatch.setattr(

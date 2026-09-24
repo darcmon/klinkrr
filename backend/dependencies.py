@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config import get_settings
 from backend.db.session import get_db
 from backend.models.admin_user import AdminUser
+from backend.models.organization import Membership
 from backend.services.web_risk_client import WebRiskClient
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -92,6 +93,33 @@ async def get_current_admin(
         )
 
     return user
+
+
+async def get_current_membership(
+    admin: AdminUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Membership:
+    """The signed-in user's membership, with its organization loaded.
+
+    Looked up on every request rather than stored in the JWT, so role changes
+    apply immediately. Users belong to exactly one organization until
+    organization switching exists.
+    """
+    result = await db.execute(select(Membership).where(Membership.user_id == admin.id))
+    memberships = result.scalars().all()
+
+    if not memberships:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of any organization",
+        )
+    if len(memberships) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Belonging to more than one organization is not supported yet",
+        )
+
+    return memberships[0]
 
 
 async def get_web_risk_client() -> AsyncIterator[WebRiskClient]:

@@ -16,7 +16,7 @@ from backend.routers.public import router as public_router
 from backend.routers.upload import router as upload_router
 from backend.config import get_settings
 from backend.middleware.security import SecurityHeaderMiddleware
-from backend.models import AdminUser
+from backend.models import AdminUser, Membership, Organization
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -45,6 +45,24 @@ async def lifespan(app: FastAPI):
                 display_name="Admin",
             )
             db.add(admin)
+
+            # Migration 0003 creates the default organization; a fresh
+            # database seeded without it still needs one.
+            organization = (
+                await db.execute(select(Organization).limit(1))
+            ).scalar_one_or_none()
+            if organization is None:
+                organization = Organization(name="Default organization")
+                db.add(organization)
+
+            await db.flush()
+            db.add(
+                Membership(
+                    organization_id=organization.id,
+                    user_id=admin.id,
+                    role="owner",
+                )
+            )
             await db.commit()
             logger.info(f"Seeded admin user: {settings.admin_email}")
     yield

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Index
+from sqlalchemy import String, Text, Index, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP, JSONB, INET
 
@@ -21,7 +21,16 @@ class AuditLog(Base):
 
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
+    # `actor` is the email at the time of the event and is never rewritten.
     actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True
+    )
+
+    # NULL for events outside any organization, such as failed logins.
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
+    )
 
     ip_address: Mapped[str | None] = mapped_column(INET, nullable=True)
 
@@ -39,4 +48,5 @@ class AuditLog(Base):
             "idx_audit_logs_created",
             "created_at",
         ),
+        Index("idx_audit_logs_organization", "organization_id", "created_at"),
     )

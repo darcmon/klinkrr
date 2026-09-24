@@ -21,12 +21,12 @@ from backend.services.web_risk_client import WebRiskClient, WebRiskError
 @pytest.mark.asyncio
 async def test_flagged_url_does_not_create_version(monkeypatch):
     db = MagicMock(spec=AsyncSession)
-    location = SimpleNamespace(id=uuid4(), slug="handbook")
+    location = SimpleNamespace(id=uuid4(), slug="handbook", organization_id=uuid4())
     query_result = MagicMock()
     query_result.scalar_one_or_none.return_value = location
     db.execute.return_value = query_result
 
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     web_risk = MagicMock(spec=WebRiskClient)
     web_risk.is_flagged.return_value = True
 
@@ -71,7 +71,7 @@ async def test_flagged_url_does_not_create_version(monkeypatch):
 @pytest.mark.asyncio
 async def test_invalid_url_is_rejected_before_business_logic(monkeypatch, url):
     db = MagicMock(spec=AsyncSession)
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     web_risk = MagicMock(spec=WebRiskClient)
 
     create_version = AsyncMock()
@@ -109,13 +109,13 @@ async def test_invalid_url_is_rejected_before_business_logic(monkeypatch, url):
 @pytest.mark.asyncio
 async def test_web_risk_failure_does_not_create_version(monkeypatch):
     db = MagicMock(spec=AsyncSession)
-    location = SimpleNamespace(id=uuid4(), slug="handbook")
+    location = SimpleNamespace(id=uuid4(), slug="handbook", organization_id=uuid4())
 
     query_result = MagicMock()
     query_result.scalar_one_or_none.return_value = location
     db.execute.return_value = query_result
 
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     web_risk = MagicMock(spec=WebRiskClient)
     web_risk.is_flagged.side_effect = WebRiskError("Web Risk request timed out")
 
@@ -163,13 +163,13 @@ async def test_clear_url_returns_submission_outcome(monkeypatch, final_status):
         apply_governance,
     )
     db = MagicMock(spec=AsyncSession)
-    location = SimpleNamespace(id=uuid4(), slug="handbook")
+    location = SimpleNamespace(id=uuid4(), slug="handbook", organization_id=uuid4())
 
     query_result = MagicMock()
     query_result.scalar_one_or_none.return_value = location
     db.execute.return_value = query_result
 
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     web_risk = MagicMock(spec=WebRiskClient)
     web_risk.is_flagged.return_value = False
 
@@ -230,6 +230,7 @@ async def test_clear_url_returns_submission_outcome(monkeypatch, final_status):
         location_id=location.id,
         link_url=url,
         uploaded_by=admin.email,
+        uploaded_by_id=admin.id,
     )
 
     calls = audit_log.await_args_list
@@ -252,7 +253,7 @@ async def test_missing_location_does_not_create_version(monkeypatch):
     query_result.scalar_one_or_none.return_value = None
     db.execute.return_value = query_result
 
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     web_risk = MagicMock(spec=WebRiskClient)
 
     create_version = AsyncMock()
@@ -322,7 +323,7 @@ async def test_unauthenticated_request_does_not_create_version(monkeypatch):
 @pytest.mark.asyncio
 async def test_missing_web_risk_key_blocks_creation(monkeypatch):
     db = MagicMock(spec=AsyncSession)
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     settings = SimpleNamespace(web_risk_api_key="")
     monkeypatch.setattr(dependencies, "get_settings", lambda: settings)

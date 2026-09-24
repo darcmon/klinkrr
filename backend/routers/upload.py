@@ -82,6 +82,7 @@ async def upload_file(
         file_size_bytes=file_size,
         s3_key=s3_key,
         uploaded_by=admin.email,
+        uploaded_by_id=admin.id,
     )
 
     await approval_service.apply_submission_governance(db, version, request=request)
@@ -93,6 +94,8 @@ async def upload_file(
         entity_type="file_version",
         entity_id=version.id,
         actor=admin.email,
+        actor_id=admin.id,
+        organization_id=location.organization_id,
         request=request,
         details={
             "filename": file.filename,
@@ -148,6 +151,7 @@ async def create_link(
         location_id=location.id,
         link_url=payload.link_url,
         uploaded_by=admin.email,
+        uploaded_by_id=admin.id,
     )
 
     await approval_service.apply_submission_governance(db, version, request=request)
@@ -158,6 +162,8 @@ async def create_link(
         entity_type="file_version",
         entity_id=version.id,
         actor=admin.email,
+        actor_id=admin.id,
+        organization_id=location.organization_id,
         request=request,
         details={"location_slug": slug, "link_mode": version.link_mode},
     )

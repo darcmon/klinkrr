@@ -51,6 +51,7 @@ async def serve_file(
             s3_key=version.s3_key,
             content_type=version.content_type,
             original_filename=version.original_filename,
+            organization_id=location.organization_id,
             expected_generation=generation,
         )
 
@@ -60,6 +61,7 @@ async def serve_file(
         action="access",
         entity_type="file_version",
         entity_id=cached.version_id,
+        organization_id=cached.organization_id,
         request=request,
     )
 

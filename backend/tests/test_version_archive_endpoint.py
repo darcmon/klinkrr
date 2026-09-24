@@ -42,7 +42,7 @@ async def test_archive_includes_link_fields(monkeypatch):
     query_result.scalar_one_or_none.return_value = location
     db.execute.return_value = query_result
 
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     get_versions = AsyncMock(return_value=([version], 1))
     monkeypatch.setattr(
         archive.approval_service,
@@ -97,7 +97,7 @@ async def test_link_download_is_rejected(monkeypatch):
 
     db = MagicMock(spec=AsyncSession)
     db.get.return_value = version
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     stream_file = MagicMock()
     monkeypatch.setattr(

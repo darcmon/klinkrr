@@ -20,6 +20,7 @@ async def test_creates_pending_link_version():
 
     db.execute.side_effect = [location_result, number_result]
 
+    uploader_id = uuid4()
     service = ApprovalService()
 
     version = await service.create_pending_link_version(
@@ -27,6 +28,7 @@ async def test_creates_pending_link_version():
         location_id=location_id,
         link_url="https://example.com/handbook",
         uploaded_by="admin@example.com",
+        uploaded_by_id=uploader_id,
     )
 
     assert version.location_id == location_id
@@ -36,6 +38,7 @@ async def test_creates_pending_link_version():
     assert version.status == "pending"
     assert version.version_number == 3
     assert version.uploaded_by == "admin@example.com"
+    assert version.uploaded_by_id == uploader_id
 
     assert version.original_filename is None
     assert version.content_type is None

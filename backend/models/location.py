@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, String, Text, ForeignKey, Index, true
+from sqlalchemy import CheckConstraint, Integer, String, Text, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 
@@ -20,11 +20,19 @@ class Location(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    approval_required: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default=true(),
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
+    )
+
+    # NULL for locations created before creators were recorded.
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True
+    )
+
+    # 0 publishes submissions immediately; 1 needs one approval. Values above 1
+    # are reserved for multi-approver review, which isn't implemented yet.
+    required_approvals: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
     )
 
     # Points to the currently approved file version.
@@ -68,7 +76,25 @@ class Location(Base):
         uselist=False,
     )
 
+    @property
+    def approval_required(self) -> bool:
+        # A new, unflushed Location has no value yet; the column default is 1.
+        required = 1 if self.required_approvals is None else self.required_approvals
+        return required > 0
+
+    @approval_required.setter
+    def approval_required(self, value: bool) -> None:
+        # Turning approval on keeps any existing multi-approver requirement.
+        if not value:
+            self.required_approvals = 0
+        elif not self.required_approvals:
+            self.required_approvals = 1
+
     # Indexes
     __table_args__ = (
         Index("idx_locations_slug", "slug", postgresql_where=(deleted_at.is_(None))),
+        Index("idx_locations_organization", "organization_id"),
+        CheckConstraint(
+            "required_approvals >= 0", name="ck_locations_required_approvals"
+        ),
     )

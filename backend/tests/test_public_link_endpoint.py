@@ -28,6 +28,7 @@ async def test_approved_link_redirects_and_uses_cache(monkeypatch):
         original_filename=None,
     )
     location = SimpleNamespace(
+        organization_id=uuid4(),
         current_approved_version_id=version.id,
     )
 
@@ -88,6 +89,7 @@ async def test_unapproved_link_is_not_served(monkeypatch, status):
         deleted_at=None,
     )
     location = SimpleNamespace(
+        organization_id=uuid4(),
         current_approved_version_id=version.id,
     )
 
@@ -139,6 +141,7 @@ async def test_approved_file_still_streams(monkeypatch):
         original_filename="handbook.pdf",
     )
     location = SimpleNamespace(
+        organization_id=uuid4(),
         current_approved_version_id=version.id,
     )
 
@@ -197,6 +200,7 @@ async def test_invalidation_during_read_prevents_stale_cache(monkeypatch):
         original_filename=None,
     )
     location = SimpleNamespace(
+        organization_id=uuid4(),
         current_approved_version_id=version.id,
     )
 

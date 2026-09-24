@@ -24,6 +24,7 @@ async def test_approving_link_schedules_cache_invalidation():
         kind="link",
         status="pending",
         deleted_at=None,
+        uploaded_by_id=uuid4(),
     )
 
     db = MagicMock(spec=AsyncSession)
@@ -36,15 +37,18 @@ async def test_approving_link_schedules_cache_invalidation():
     update_result = MagicMock()
     db.execute.side_effect = [location_result, update_result]
 
+    reviewer_id = uuid4()
     service = approval_module.ApprovalService()
     approved, updated_location = await service.approve_version(
         db=db,
         version_id=version.id,
         reviewed_by="admin@example.com",
+        reviewed_by_id=reviewer_id,
     )
 
     assert approved.status == "approved"
     assert approved.reviewed_by == "admin@example.com"
+    assert approved.reviewed_by_id == reviewer_id
     assert approved.reviewed_at is not None
     assert updated_location.current_approved_version_id == version.id
     assert db.info["cache_invalidation_slugs"] == {"handbook"}

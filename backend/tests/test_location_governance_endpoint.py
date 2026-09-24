@@ -41,11 +41,12 @@ async def test_governance_update_preserves_publication_and_audits_changes(
         description=None,
         reminder_email=None,
         approval_required=initial,
+        organization_id=uuid4(),
         current_approved_version_id=published_version_id,
         created_at=now,
         updated_at=now,
     )
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     db = MagicMock(spec=AsyncSession)
     query_result = MagicMock()
@@ -109,7 +110,7 @@ async def test_governance_update_returns_404_for_missing_location(monkeypatch):
     query_result.scalar_one_or_none.return_value = None
     db.execute.return_value = query_result
 
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     audit_log = AsyncMock()
     monkeypatch.setattr(locations.audit_service, "log", audit_log)

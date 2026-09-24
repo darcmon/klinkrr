@@ -21,6 +21,7 @@ class CachedVersion:
     kind: Literal["file", "link"] = "file"
     link_url: str | None = None
     link_mode: Literal["redirect"] | None = None
+    organization_id: UUID | None = None
 
 
 class CacheService:
@@ -50,6 +51,7 @@ class CacheService:
         kind: Literal["file", "link"] = "file",
         link_url: str | None = None,
         link_mode: Literal["redirect"] | None = None,
+        organization_id: UUID | None = None,
         expected_generation: int | None = None,
     ) -> CachedVersion:
         entry = CachedVersion(
@@ -61,6 +63,7 @@ class CacheService:
             kind=kind,
             link_url=link_url,
             link_mode=link_mode,
+            organization_id=organization_id,
         )
 
         if expected_generation is None or expected_generation == self._generation:

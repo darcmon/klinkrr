@@ -3,15 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
-from backend.dependencies import get_current_admin
+from backend.dependencies import get_current_admin, get_current_membership
 from backend.models.admin_user import AdminUser
 from backend.models.location import Location
+from backend.models.organization import Membership
 from backend.schemas.file_version import (
     ApprovalRequest,
     ApprovalResponse,
     PendingVersionResponse,
 )
-from backend.services.approval_service import approval_service
+from backend.services.approval_service import (
+    SelfApprovalNotAllowed,
+    approval_service,
+)
 from backend.services.audit_service import audit_service
 
 router = APIRouter(prefix="/admin", tags=["approval"])
@@ -49,14 +53,19 @@ async def approve_version(
     body: ApprovalRequest | None = None,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
     try:
         version, location = await approval_service.approve_version(
             db=db,
             version_id=version_id,
             reviewed_by=admin.email,
+            reviewed_by_id=admin.id,
             notes=body.notes if body else None,
+            allow_self_approval=membership.organization.allow_self_approval,
         )
+    except SelfApprovalNotAllowed as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -66,8 +75,14 @@ async def approve_version(
         entity_type="file_version",
         entity_id=version.id,
         actor=admin.email,
+        actor_id=admin.id,
+        organization_id=location.organization_id,
         request=request,
-        details={"location_slug": location.slug, "notes": body.notes if body else None},
+        details={
+            "location_slug": location.slug,
+            "notes": body.notes if body else None,
+            "self_approved": version.uploaded_by_id == admin.id,
+        },
     )
 
     return ApprovalResponse.from_version(
@@ -91,6 +106,7 @@ async def reject_version(
             db=db,
             version_id=version_id,
             reviewed_by=admin.email,
+            reviewed_by_id=admin.id,
             notes=body.notes if body else None,
         )
     except ValueError as e:
@@ -101,6 +117,8 @@ async def reject_version(
         entity_id=version.id,
         entity_type="file_version",
         actor=admin.email,
+        actor_id=admin.id,
+        organization_id=location.organization_id,
         action="reject",
         request=request,
         details={"location_slug": location.slug, "notes": body.notes if body else None},

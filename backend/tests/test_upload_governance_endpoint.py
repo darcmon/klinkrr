@@ -17,8 +17,8 @@ from backend.routers import upload
 @pytest.mark.parametrize("final_status", ["pending", "approved"])
 async def test_upload_returns_submission_outcome(monkeypatch, final_status):
     db = MagicMock(spec=AsyncSession)
-    location = SimpleNamespace(id=uuid4(), slug="documents")
-    admin = SimpleNamespace(email="admin@example.com")
+    location = SimpleNamespace(id=uuid4(), slug="documents", organization_id=uuid4())
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     query_result = MagicMock()
     query_result.scalar_one_or_none.return_value = location
@@ -100,6 +100,7 @@ async def test_upload_returns_submission_outcome(monkeypatch, final_status):
         file_size_bytes=len(content),
         s3_key=s3_key,
         uploaded_by=admin.email,
+        uploaded_by_id=admin.id,
     )
     apply_governance.assert_awaited_once_with(
         db,

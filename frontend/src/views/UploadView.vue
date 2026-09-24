@@ -28,6 +28,7 @@ const error = ref('');
 const result = ref<{
   label: string;
   version_number: number;
+  status: 'pending' | 'approved';
 } | null>(null);
 
 function clearFeedback() {
@@ -134,6 +135,7 @@ async function upload() {
     result.value = {
       label: created.original_filename,
       version_number: created.version_number,
+      status: created.status,
     };
     selectedFile.value = null;
   } catch (e) {
@@ -164,6 +166,7 @@ async function submitLink() {
     result.value = {
       label: created.link_url,
       version_number: created.version_number,
+      status: created.status,
     };
     linkUrl.value = '';
   } catch (e) {
@@ -181,8 +184,8 @@ onMounted(loadLocations);
     <header>
       <h1>Submit a version</h1>
       <p class="text-muted">
-        Submit a file or redirect link for approval. Published content stays
-        unchanged until approval.
+        Submit a file or redirect link. The location’s approval setting
+        determines whether it publishes immediately or waits for review.
       </p>
     </header>
 
@@ -277,7 +280,7 @@ onMounted(loadLocations);
       <BaseField
         id="link-url"
         label="Destination URL"
-        hint="Use an HTTPS URL. We check the destination before submitting it for approval."
+        hint="Use an HTTPS URL. The destination must pass a safety check before it is accepted."
         v-slot="{ id, describedBy }"
       >
         <input
@@ -360,12 +363,30 @@ onMounted(loadLocations);
     <p v-if="error" class="error" role="alert">{{ error }}</p>
 
     <div v-if="result" class="success" role="status">
-      <strong>Submitted for approval</strong>
+      <strong>
+        {{ result.status === 'approved' ? 'Published' : 'Pending approval' }}
+      </strong>
+
+      <p>{{ result.label }} — version {{ result.version_number }}</p>
+
       <p>
-        {{ result.label }} — version {{ result.version_number }} is pending.
-        Published content has not changed.
+        {{
+          result.status === 'approved'
+            ? 'This version is now available at the location’s public URL.'
+            : 'Published content has not changed. This version needs approval.'
+        }}
       </p>
-      <router-link to="/dashboard">Review on the Dashboard →</router-link>
+
+      <router-link v-if="result.status === 'pending'" to="/dashboard">
+        Review on the Dashboard →
+      </router-link>
+
+      <router-link
+        v-else
+        :to="{ name: 'archive', params: { slug: selectedSlug } }"
+      >
+        View version history →
+      </router-link>
     </div>
   </div>
 </template>

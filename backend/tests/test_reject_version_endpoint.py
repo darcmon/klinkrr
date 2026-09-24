@@ -16,7 +16,7 @@ from backend.routers import approval
 @pytest.mark.asyncio
 async def test_rejecting_reviewed_version_returns_readable_error(monkeypatch):
     db = MagicMock(spec=AsyncSession)
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     reject_version = AsyncMock(
         side_effect=ValueError("Cannot reject version with status 'approved'")
@@ -50,6 +50,7 @@ async def test_rejecting_reviewed_version_returns_readable_error(monkeypatch):
         db=db,
         version_id=version_id,
         reviewed_by=admin.email,
+        reviewed_by_id=admin.id,
         notes=None,
     )
     audit_log.assert_not_called()
@@ -59,7 +60,7 @@ async def test_rejecting_reviewed_version_returns_readable_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_rejection_returns_review_and_records_audit(monkeypatch):
     db = MagicMock(spec=AsyncSession)
-    admin = SimpleNamespace(email="admin@example.com")
+    admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
     reviewed_at = datetime(2026, 9, 23, tzinfo=timezone.utc)
 
     version = SimpleNamespace(
@@ -68,7 +69,7 @@ async def test_rejection_returns_review_and_records_audit(monkeypatch):
         reviewed_by=admin.email,
         reviewed_at=reviewed_at,
     )
-    location = SimpleNamespace(slug="documents")
+    location = SimpleNamespace(slug="documents", organization_id=uuid4())
 
     reject_version = AsyncMock(return_value=(version, location))
     monkeypatch.setattr(
@@ -105,6 +106,7 @@ async def test_rejection_returns_review_and_records_audit(monkeypatch):
         db=db,
         version_id=version.id,
         reviewed_by=admin.email,
+        reviewed_by_id=admin.id,
         notes="Please update the document.",
     )
     db.get.assert_not_called()

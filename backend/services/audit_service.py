@@ -18,6 +18,8 @@ class AuditService:
         entity_type: str,
         entity_id: UUID,
         actor: str | None = None,
+        actor_id: UUID | None = None,
+        organization_id: UUID | None = None,
         request: Request | None = None,
         details: dict | None = None,
     ) -> AuditLog:
@@ -26,6 +28,8 @@ class AuditService:
             entity_type=entity_type,
             entity_id=entity_id,
             actor=actor,
+            actor_id=actor_id,
+            organization_id=organization_id,
             ip_address=request.client.host if request and request.client else None,
             user_agent=request.headers.get("user-agent") if request else None,
             details=details,

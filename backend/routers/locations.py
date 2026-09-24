@@ -5,9 +5,10 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
-from backend.dependencies import get_current_admin
+from backend.dependencies import get_current_admin, get_current_membership
 from backend.models.admin_user import AdminUser
 from backend.models.location import Location
+from backend.models.organization import Membership
 from backend.services.audit_service import audit_service
 from backend.schemas.location import (
     LocationCreate,
@@ -43,6 +44,7 @@ async def create_location(
     body: LocationCreate,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
     # Check slug uniqueness
     existing = await db.execute(select(Location).where(Location.slug == body.slug))
@@ -54,8 +56,10 @@ async def create_location(
         display_name=body.display_name,
         description=body.description,
         reminder_email=body.reminder_email,
-        approval_required=body.approval_required,
+        organization_id=membership.organization_id,
+        created_by_id=admin.id,
     )
+    location.approval_required = body.approval_required
     db.add(location)
     await db.flush()
     return location
@@ -110,6 +114,8 @@ async def update_location(
             entity_type="location",
             entity_id=location.id,
             actor=admin.email,
+            actor_id=admin.id,
+            organization_id=location.organization_id,
             request=request,
             details={
                 "approval_required": {

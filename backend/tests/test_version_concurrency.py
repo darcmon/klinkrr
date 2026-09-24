@@ -7,7 +7,7 @@ import pytest_asyncio
 from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from backend.models import FileVersion, Location
+from backend.models import AdminUser, FileVersion, Location, Organization
 from backend.services.approval_service import ApprovalService
 
 
@@ -19,18 +19,31 @@ async def version_database():
     engine = create_async_engine(url, isolation_level="READ COMMITTED")
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     location_id = uuid4()
+    organization_id = uuid4()
+    user_id = uuid4()
 
     try:
         async with engine.begin() as connection:
+            await connection.execute(
+                insert(Organization).values(id=organization_id, name="Concurrency test")
+            )
+            await connection.execute(
+                insert(AdminUser).values(
+                    id=user_id,
+                    email=f"concurrency-{user_id}@example.com",
+                    display_name="Concurrency test",
+                )
+            )
             await connection.execute(
                 insert(Location).values(
                     id=location_id,
                     slug=f"concurrency-{location_id}",
                     display_name="Concurrency test",
+                    organization_id=organization_id,
                 )
             )
 
-        yield engine, sessions, location_id
+        yield engine, sessions, location_id, user_id
     finally:
         try:
             async with engine.begin() as connection:
@@ -45,6 +58,10 @@ async def version_database():
                 await connection.execute(
                     delete(Location).where(Location.id == location_id)
                 )
+                await connection.execute(delete(AdminUser).where(AdminUser.id == user_id))
+                await connection.execute(
+                    delete(Organization).where(Organization.id == organization_id)
+                )
         finally:
             await engine.dispose()
 
@@ -55,7 +72,7 @@ async def version_database():
 async def test_concurrent_submissions_get_distinct_numbers(
     version_database, first_kind, second_kind
 ):
-    engine, sessions, location_id = version_database
+    engine, sessions, location_id, user_id = version_database
     service = ApprovalService()
 
     async def create_version(db, kind, label):
@@ -65,6 +82,7 @@ async def test_concurrent_submissions_get_distinct_numbers(
                 location_id=location_id,
                 link_url=f"https://example.com/{label}",
                 uploaded_by=f"{label}@example.com",
+                uploaded_by_id=user_id,
             )
 
         return await service.create_pending_version(
@@ -75,6 +93,7 @@ async def test_concurrent_submissions_get_distinct_numbers(
             file_size_bytes=100,
             s3_key=f"test/{location_id}/{label}.pdf",
             uploaded_by=f"{label}@example.com",
+            uploaded_by_id=user_id,
         )
 
     async with sessions() as first_db, sessions() as second_db:
@@ -131,7 +150,7 @@ async def test_concurrent_submissions_get_distinct_numbers(
 
 @pytest.mark.asyncio
 async def test_concurrent_approvals_leave_one_approved_version(version_database):
-    engine, sessions, location_id = version_database
+    engine, sessions, location_id, user_id = version_database
     service = ApprovalService()
 
     # Create two pending versions and make them visible to both sessions.
@@ -141,12 +160,14 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
             location_id=location_id,
             link_url="https://example.com/first",
             uploaded_by="test@example.com",
+            uploaded_by_id=user_id,
         )
         second = await service.create_pending_link_version(
             db=setup_db,
             location_id=location_id,
             link_url="https://example.com/second",
             uploaded_by="test@example.com",
+            uploaded_by_id=user_id,
         )
         await setup_db.commit()
         first_id = first.id
@@ -160,6 +181,7 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
             db=first_db,
             version_id=first_id,
             reviewed_by="first-admin@example.com",
+            reviewed_by_id=user_id,
         )
 
         # The first approval has not committed yet.
@@ -168,6 +190,7 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
                 db=second_db,
                 version_id=second_id,
                 reviewed_by="second-admin@example.com",
+                reviewed_by_id=user_id,
             )
         )
 
@@ -225,7 +248,7 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
 async def test_competing_reviews_preserve_first_decision(
     version_database, first_action
 ):
-    engine, sessions, location_id = version_database
+    engine, sessions, location_id, user_id = version_database
     service = ApprovalService()
 
     async with sessions() as setup_db:
@@ -234,6 +257,7 @@ async def test_competing_reviews_preserve_first_decision(
             location_id=location_id,
             link_url="https://example.com/document",
             uploaded_by="test@example.com",
+            uploaded_by_id=user_id,
         )
         await setup_db.commit()
         version_id = version.id
@@ -255,6 +279,7 @@ async def test_competing_reviews_preserve_first_decision(
             db=first_db,
             version_id=version_id,
             reviewed_by="first-admin@example.com",
+            reviewed_by_id=user_id,
         )
 
         second_task = asyncio.create_task(
@@ -262,6 +287,7 @@ async def test_competing_reviews_preserve_first_decision(
                 db=second_db,
                 version_id=version_id,
                 reviewed_by="second-admin@example.com",
+                reviewed_by_id=user_id,
             )
         )
 
@@ -313,7 +339,7 @@ async def test_competing_reviews_preserve_first_decision(
 async def test_auto_publish_preserves_older_pending_versions(
     version_database, current_kind, new_kind
 ):
-    _engine, sessions, location_id = version_database
+    _engine, sessions, location_id, user_id = version_database
     service = ApprovalService()
 
     async def create_version(db, kind, label):
@@ -323,6 +349,7 @@ async def test_auto_publish_preserves_older_pending_versions(
                 location_id=location_id,
                 link_url=f"https://example.com/{label}",
                 uploaded_by="admin@example.com",
+                uploaded_by_id=user_id,
             )
 
         return await service.create_pending_version(
@@ -333,6 +360,7 @@ async def test_auto_publish_preserves_older_pending_versions(
             file_size_bytes=100,
             s3_key=f"test/{location_id}/{label}.pdf",
             uploaded_by="admin@example.com",
+            uploaded_by_id=user_id,
         )
 
     async with sessions() as db:
@@ -342,6 +370,7 @@ async def test_auto_publish_preserves_older_pending_versions(
                 db=db,
                 version_id=current.id,
                 reviewed_by="admin@example.com",
+                reviewed_by_id=user_id,
             )
 
             older_pending = await service.create_pending_link_version(
@@ -349,6 +378,7 @@ async def test_auto_publish_preserves_older_pending_versions(
                 location_id=location_id,
                 link_url="https://example.com/waiting",
                 uploaded_by="admin@example.com",
+                uploaded_by_id=user_id,
             )
 
             location = await db.get(Location, location_id)
@@ -379,20 +409,21 @@ async def test_auto_publish_preserves_older_pending_versions(
 async def test_submission_waits_for_governance_change(
     version_database, approval_required
 ):
-    engine, sessions, location_id = version_database
+    engine, sessions, location_id, user_id = version_database
     service = ApprovalService()
 
     async with sessions() as setup_db:
         await setup_db.execute(
             update(Location)
             .where(Location.id == location_id)
-            .values(approval_required=not approval_required)
+            .values(required_approvals=0 if approval_required else 1)
         )
         older_pending = await service.create_pending_link_version(
             db=setup_db,
             location_id=location_id,
             link_url="https://example.com/older-pending",
             uploaded_by="admin@example.com",
+            uploaded_by_id=user_id,
         )
         older_pending_id = older_pending.id
         await setup_db.commit()
@@ -419,6 +450,7 @@ async def test_submission_waits_for_governance_change(
                 location_id=location_id,
                 link_url="https://example.com/new-submission",
                 uploaded_by="admin@example.com",
+                uploaded_by_id=user_id,
             )
             await service.apply_submission_governance(submission_db, version)
             return version

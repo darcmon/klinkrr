@@ -44,11 +44,18 @@ class FileVersion(Base):
     # "superseded" means this was once approved, but a newer version replaced it.
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
 
+    # Email columns are a display snapshot; the *_id columns identify the person.
     uploaded_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_by_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False
+    )
     uploaded_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True
+    )
     reviewed_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
@@ -87,6 +94,7 @@ class FileVersion(Base):
             "status",
             postgresql_where=(deleted_at.is_(None)),
         ),
+        Index("idx_file_versions_uploaded_by", "uploaded_by_id"),
         Index(
             "idx_file_versions_pending",
             "status",

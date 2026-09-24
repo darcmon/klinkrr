@@ -11,6 +11,10 @@ from backend.models.file_version import FileVersion
 from backend.services.audit_service import audit_service
 
 
+class SelfApprovalNotAllowed(Exception):
+    """The organization requires someone other than the uploader to approve."""
+
+
 class ApprovalService:
     async def _get_version_for_review(
         self,
@@ -90,6 +94,8 @@ class ApprovalService:
             entity_type="file_version",
             entity_id=version.id,
             actor=version.uploaded_by,
+            actor_id=version.uploaded_by_id,
+            organization_id=location.organization_id,
             request=request,
             details={
                 "location_slug": location.slug,
@@ -102,7 +108,9 @@ class ApprovalService:
         db: AsyncSession,
         version_id: UUID,
         reviewed_by: str,
+        reviewed_by_id: UUID,
         notes: str | None = None,
+        allow_self_approval: bool = True,
     ) -> tuple[FileVersion, Location]:
         version, location = await self._get_version_for_review(db, version_id)
 
@@ -110,8 +118,13 @@ class ApprovalService:
             raise ValueError(f"Cannot approve version with status '{version.status}'")
         if version.deleted_at is not None:
             raise ValueError("Cannot approve a deleted version")
+        if version.uploaded_by_id == reviewed_by_id and not allow_self_approval:
+            raise SelfApprovalNotAllowed(
+                "Someone other than the uploader must approve this version"
+            )
 
         version.reviewed_by = reviewed_by
+        version.reviewed_by_id = reviewed_by_id
         version.reviewed_at = datetime.now(timezone.utc)
         version.review_notes = notes
 
@@ -123,6 +136,7 @@ class ApprovalService:
         db: AsyncSession,
         version_id: UUID,
         reviewed_by: str,
+        reviewed_by_id: UUID,
         notes: str | None = None,
     ) -> tuple[FileVersion, Location]:
         version, location = await self._get_version_for_review(db, version_id)
@@ -134,6 +148,7 @@ class ApprovalService:
 
         version.status = "rejected"
         version.reviewed_by = reviewed_by
+        version.reviewed_by_id = reviewed_by_id
         version.reviewed_at = datetime.now(timezone.utc)
         version.review_notes = notes
 
@@ -177,6 +192,7 @@ class ApprovalService:
         file_size_bytes: int,
         s3_key: str,
         uploaded_by: str,
+        uploaded_by_id: UUID,
     ) -> FileVersion:
         version_number = await self.get_next_version_number(db, location_id)
         version = FileVersion(
@@ -186,6 +202,7 @@ class ApprovalService:
             file_size_bytes=file_size_bytes,
             s3_key=s3_key,
             uploaded_by=uploaded_by,
+            uploaded_by_id=uploaded_by_id,
             version_number=version_number,
             status="pending",
         )
@@ -199,6 +216,7 @@ class ApprovalService:
         location_id: UUID,
         link_url: str,
         uploaded_by: str,
+        uploaded_by_id: UUID,
     ) -> FileVersion:
         version_number = await self.get_next_version_number(db, location_id)
 
@@ -208,6 +226,7 @@ class ApprovalService:
             link_url=link_url,
             link_mode="redirect",
             uploaded_by=uploaded_by,
+            uploaded_by_id=uploaded_by_id,
             version_number=version_number,
             status="pending",
         )
