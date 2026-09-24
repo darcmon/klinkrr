@@ -1,20 +1,23 @@
+from typing import Literal
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
 from backend.dependencies import get_current_admin, get_current_membership
 from backend.models.admin_user import AdminUser
-from backend.models.location import Location
 from backend.models.organization import Membership
 from backend.schemas.file_version import (
     ApprovalRequest,
     ApprovalResponse,
     PendingVersionResponse,
 )
+from backend.permissions import review_capabilities
 from backend.services.approval_service import (
-    SelfApprovalNotAllowed,
+    ReviewNotAllowed,
+    VersionNotFound,
     approval_service,
+    review_rights,
 )
 from backend.services.audit_service import audit_service
 
@@ -23,24 +26,44 @@ router = APIRouter(prefix="/admin", tags=["approval"])
 
 @router.get("/versions/pending", response_model=list[PendingVersionResponse])
 async def list_pending(
+    filter: Literal["all", "waiting_on_me", "mine"] = Query("all"),
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
-    """List all pending uploads across all locations."""
-    versions = await approval_service.get_pending_versions(db)
+    """List pending uploads across the organization's locations.
 
-    # Fetch location info for each version
+    `waiting_on_me` is other people's versions the caller can review;
+    `mine` is the caller's own. Each item says what the caller may do to it.
+    """
+    can_approve_own, can_review_others = review_capabilities(membership)
+
+    if filter == "waiting_on_me" and not can_review_others:
+        return []
+
+    rows = await approval_service.get_pending_versions(
+        db,
+        membership.organization_id,
+        uploaded_by_id=admin.id if filter == "mine" else None,
+        exclude_uploaded_by_id=admin.id if filter == "waiting_on_me" else None,
+    )
+
     results: list[PendingVersionResponse] = []
-    for version in versions:
-        location = await db.get(Location, version.location_id)
-        if location is None:
-            raise RuntimeError("Version references a missing location")
-
+    for version, location in rows:
+        rights = review_rights(
+            version.uploaded_by_id,
+            admin.id,
+            can_approve_own=can_approve_own,
+            can_review_others=can_review_others,
+        )
         results.append(
             PendingVersionResponse.from_version(
                 version,
                 location_slug=location.slug,
                 location_display_name=location.display_name,
+                is_own=version.uploaded_by_id == admin.id,
+                can_approve=rights.can_approve,
+                can_reject=rights.can_reject,
             )
         )
     return results
@@ -55,17 +78,22 @@ async def approve_version(
     admin: AdminUser = Depends(get_current_admin),
     membership: Membership = Depends(get_current_membership),
 ):
+    can_approve_own, can_review_others = review_capabilities(membership)
     try:
         version, location = await approval_service.approve_version(
             db=db,
             version_id=version_id,
             reviewed_by=admin.email,
             reviewed_by_id=admin.id,
+            organization_id=membership.organization_id,
+            can_approve_own=can_approve_own,
+            can_review_others=can_review_others,
             notes=body.notes if body else None,
-            allow_self_approval=membership.organization.allow_self_approval,
         )
-    except SelfApprovalNotAllowed as e:
+    except ReviewNotAllowed as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
+    except VersionNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -99,16 +127,24 @@ async def reject_version(
     body: ApprovalRequest | None = None,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
     """Reject a pending file version."""
+    _, can_review_others = review_capabilities(membership)
     try:
         version, location = await approval_service.reject_version(
             db=db,
             version_id=version_id,
             reviewed_by=admin.email,
             reviewed_by_id=admin.id,
+            organization_id=membership.organization_id,
+            can_review_others=can_review_others,
             notes=body.notes if body else None,
         )
+    except ReviewNotAllowed as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except VersionNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from uuid import UUID
 from fastapi import Request
 from datetime import datetime, timezone
@@ -11,8 +12,33 @@ from backend.models.file_version import FileVersion
 from backend.services.audit_service import audit_service
 
 
-class SelfApprovalNotAllowed(Exception):
-    """The organization requires someone other than the uploader to approve."""
+class VersionNotFound(ValueError):
+    """No such version in the caller's organization."""
+
+
+class ReviewNotAllowed(Exception):
+    """The reviewer may not approve or reject this particular version."""
+
+
+@dataclass(frozen=True)
+class ReviewRights:
+    can_approve: bool
+    can_reject: bool
+
+
+def review_rights(
+    uploaded_by_id: UUID,
+    reviewer_id: UUID,
+    *,
+    can_approve_own: bool,
+    can_review_others: bool,
+) -> ReviewRights:
+    """What a reviewer may do to one version. The single source of these rules:
+    enforcement and the dashboard's per-item flags both use it."""
+    if uploaded_by_id == reviewer_id:
+        # Rejecting your own pending version withdraws it, so it's always allowed.
+        return ReviewRights(can_approve=can_approve_own, can_reject=True)
+    return ReviewRights(can_approve=can_review_others, can_reject=can_review_others)
 
 
 class ApprovalService:
@@ -20,10 +46,11 @@ class ApprovalService:
         self,
         db: AsyncSession,
         version_id: UUID,
+        organization_id: UUID,
     ) -> tuple[FileVersion, Location]:
         version = await db.get(FileVersion, version_id)
         if version is None:
-            raise ValueError("Version not found")
+            raise VersionNotFound("Version not found")
 
         location_result = await db.execute(
             select(Location)
@@ -34,6 +61,8 @@ class ApprovalService:
         location = location_result.scalar_one_or_none()
         if location is None:
             raise ValueError("Location not found")
+        if location.organization_id != organization_id:
+            raise VersionNotFound("Version not found")
 
         await db.refresh(version)
         return version, location
@@ -109,18 +138,31 @@ class ApprovalService:
         version_id: UUID,
         reviewed_by: str,
         reviewed_by_id: UUID,
+        organization_id: UUID,
+        *,
+        can_approve_own: bool,
+        can_review_others: bool,
         notes: str | None = None,
-        allow_self_approval: bool = True,
     ) -> tuple[FileVersion, Location]:
-        version, location = await self._get_version_for_review(db, version_id)
+        version, location = await self._get_version_for_review(
+            db, version_id, organization_id
+        )
 
         if version.status != "pending":
             raise ValueError(f"Cannot approve version with status '{version.status}'")
         if version.deleted_at is not None:
             raise ValueError("Cannot approve a deleted version")
-        if version.uploaded_by_id == reviewed_by_id and not allow_self_approval:
-            raise SelfApprovalNotAllowed(
+        rights = review_rights(
+            version.uploaded_by_id,
+            reviewed_by_id,
+            can_approve_own=can_approve_own,
+            can_review_others=can_review_others,
+        )
+        if not rights.can_approve:
+            raise ReviewNotAllowed(
                 "Someone other than the uploader must approve this version"
+                if version.uploaded_by_id == reviewed_by_id
+                else "Your role doesn't allow approving other people's versions"
             )
 
         version.reviewed_by = reviewed_by
@@ -137,14 +179,30 @@ class ApprovalService:
         version_id: UUID,
         reviewed_by: str,
         reviewed_by_id: UUID,
+        organization_id: UUID,
+        *,
+        can_review_others: bool,
         notes: str | None = None,
     ) -> tuple[FileVersion, Location]:
-        version, location = await self._get_version_for_review(db, version_id)
+        version, location = await self._get_version_for_review(
+            db, version_id, organization_id
+        )
 
         if version.status != "pending":
             raise ValueError(f"Cannot reject version with status '{version.status}'")
         if version.deleted_at is not None:
             raise ValueError("Cannot reject a deleted version")
+        rights = review_rights(
+            version.uploaded_by_id,
+            reviewed_by_id,
+            # Irrelevant to rejection; own versions can always be withdrawn.
+            can_approve_own=False,
+            can_review_others=can_review_others,
+        )
+        if not rights.can_reject:
+            raise ReviewNotAllowed(
+                "Your role doesn't allow rejecting other people's versions"
+            )
 
         version.status = "rejected"
         version.reviewed_by = reviewed_by
@@ -155,16 +213,32 @@ class ApprovalService:
         await db.flush()
         return version, location
 
-    async def get_pending_versions(self, db: AsyncSession) -> list[FileVersion]:
-        result = await db.execute(
-            select(FileVersion)
+    async def get_pending_versions(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        *,
+        uploaded_by_id: UUID | None = None,
+        exclude_uploaded_by_id: UUID | None = None,
+    ) -> list[tuple[FileVersion, Location]]:
+        """Pending versions in the organization, each with its location."""
+        query = (
+            select(FileVersion, Location)
+            .join(Location, Location.id == FileVersion.location_id)
             .where(
                 FileVersion.status == "pending",
                 FileVersion.deleted_at.is_(None),
+                Location.organization_id == organization_id,
             )
             .order_by(FileVersion.uploaded_at.desc())
         )
-        return list(result.scalars().all())
+        if uploaded_by_id is not None:
+            query = query.where(FileVersion.uploaded_by_id == uploaded_by_id)
+        if exclude_uploaded_by_id is not None:
+            query = query.where(FileVersion.uploaded_by_id != exclude_uploaded_by_id)
+
+        result = await db.execute(query)
+        return [(version, location) for version, location in result.all()]
 
     async def get_next_version_number(
         self,

@@ -10,17 +10,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.dependencies import get_current_admin, get_current_membership, get_db
 from backend.routers import approval
-from backend.services.approval_service import SelfApprovalNotAllowed
+from backend.services.approval_service import ReviewNotAllowed
 from backend.services.audit_service import AuditService
 
 
-def build_app(db, admin, *, allow_self_approval=True):
+ORGANIZATION_ID = uuid4()
+
+
+def build_app(db, admin, *, role="owner", allow_self_approval=True):
     app = FastAPI()
     app.include_router(approval.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
     app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
-        organization=SimpleNamespace(allow_self_approval=allow_self_approval)
+        organization_id=ORGANIZATION_ID,
+        role=role,
+        organization=SimpleNamespace(allow_self_approval=allow_self_approval),
     )
     return app
 
@@ -75,8 +80,10 @@ async def test_approve_version_returns_success_and_records_audit(
         version_id=version.id,
         reviewed_by=admin.email,
         reviewed_by_id=admin.id,
+        organization_id=ORGANIZATION_ID,
+        can_approve_own=True,
+        can_review_others=True,
         notes="Ready to publish",
-        allow_self_approval=True,
     )
 
     db.add.assert_called_once()
@@ -96,27 +103,49 @@ async def test_approve_version_returns_success_and_records_audit(
 
 
 @pytest.mark.asyncio
-async def test_self_approval_is_forbidden_when_organization_disallows_it(monkeypatch):
+@pytest.mark.parametrize(
+    ("role", "allow_self_approval", "can_approve_own", "can_review_others"),
+    [
+        ("owner", False, False, True),
+        ("approver", True, True, True),
+        ("uploader", True, True, False),
+        ("uploader", False, False, False),
+    ],
+)
+async def test_review_rights_follow_role_and_organization_setting(
+    monkeypatch, role, allow_self_approval, can_approve_own, can_review_others
+):
     db = MagicMock(spec=AsyncSession)
     admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
-    approve_version = AsyncMock(
-        side_effect=SelfApprovalNotAllowed(
-            "Someone other than the uploader must approve this version"
-        )
-    )
+    approve_version = AsyncMock(side_effect=ReviewNotAllowed("Not allowed"))
     monkeypatch.setattr(approval.approval_service, "approve_version", approve_version)
     audit_log = AsyncMock()
     monkeypatch.setattr(approval.audit_service, "log", audit_log)
 
-    version_id = uuid4()
     response = await post_approve(
-        build_app(db, admin, allow_self_approval=False), version_id
+        build_app(db, admin, role=role, allow_self_approval=allow_self_approval),
+        uuid4(),
     )
 
     assert response.status_code == 403
-    assert response.json() == {
-        "detail": "Someone other than the uploader must approve this version"
-    }
-    assert approve_version.await_args.kwargs["allow_self_approval"] is False
+    assert response.json() == {"detail": "Not allowed"}
+    kwargs = approve_version.await_args.kwargs
+    assert kwargs["can_approve_own"] is can_approve_own
+    assert kwargs["can_review_others"] is can_review_others
     audit_log.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_version_in_another_organization_is_not_found(monkeypatch):
+    from backend.services.approval_service import VersionNotFound
+
+    approve_version = AsyncMock(side_effect=VersionNotFound("Version not found"))
+    monkeypatch.setattr(approval.approval_service, "approve_version", approve_version)
+
+    response = await post_approve(
+        build_app(MagicMock(spec=AsyncSession), SimpleNamespace(id=uuid4(), email="a@b.c")),
+        uuid4(),
+    )
+
+    assert response.status_code == 404

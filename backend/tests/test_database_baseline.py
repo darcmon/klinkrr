@@ -157,3 +157,83 @@ async def test_database_enforces_organization_and_identity_constraints():
             await transaction.rollback()
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_admin_lookups_are_scoped_to_the_organization():
+    url = os.environ.get("PHASE1_TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("Requires a migrated disposable PostgreSQL database")
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.services import scoping
+    from backend.services.approval_service import ApprovalService
+
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            db = AsyncSession(bind=connection, join_transaction_mode="create_savepoint")
+
+            user_id = uuid.uuid4()
+            await connection.execute(insert(AdminUser).values(
+                id=user_id, email=f"{user_id}@example.com", display_name="Test"
+            ))
+            ours, theirs = uuid.uuid4(), uuid.uuid4()
+            slugs, versions = {}, {}
+            for organization_id in (ours, theirs):
+                await connection.execute(insert(Organization).values(
+                    id=organization_id, name="Test"
+                ))
+                location_id = uuid.uuid4()
+                slugs[organization_id] = f"scoped-{location_id}"
+                await connection.execute(insert(Location).values(
+                    id=location_id, slug=slugs[organization_id], display_name="Test",
+                    organization_id=organization_id,
+                ))
+                versions[organization_id] = await connection.scalar(
+                    insert(FileVersion).values(
+                        location_id=location_id, uploaded_by="test",
+                        uploaded_by_id=user_id, version_number=1, kind="link",
+                        link_url="https://example.com", link_mode="redirect",
+                    ).returning(FileVersion.id)
+                )
+
+            assert await scoping.get_location(db, ours, slugs[ours]) is not None
+            assert await scoping.get_location(db, ours, slugs[theirs]) is None
+            assert await scoping.get_version(db, ours, versions[ours]) is not None
+            assert await scoping.get_version(db, ours, versions[theirs]) is None
+
+            service = ApprovalService()
+            pending = await service.get_pending_versions(db, ours)
+            assert [(v.id, l.slug) for v, l in pending] == [
+                (versions[ours], slugs[ours])
+            ]
+
+            # A second person's version in our organization, for the filters.
+            colleague_id = uuid.uuid4()
+            await connection.execute(insert(AdminUser).values(
+                id=colleague_id, email=f"{colleague_id}@example.com",
+                display_name="Colleague",
+            ))
+            our_location_id = pending[0][1].id
+            colleague_version = await connection.scalar(
+                insert(FileVersion).values(
+                    location_id=our_location_id, uploaded_by="colleague",
+                    uploaded_by_id=colleague_id, version_number=2, kind="link",
+                    link_url="https://example.com/2", link_mode="redirect",
+                ).returning(FileVersion.id)
+            )
+
+            mine = await service.get_pending_versions(db, ours, uploaded_by_id=user_id)
+            assert [v.id for v, _ in mine] == [versions[ours]]
+            waiting = await service.get_pending_versions(
+                db, ours, exclude_uploaded_by_id=user_id
+            )
+            assert [v.id for v, _ in waiting] == [colleague_version]
+
+            await db.close()
+            await transaction.rollback()
+    finally:
+        await engine.dispose()

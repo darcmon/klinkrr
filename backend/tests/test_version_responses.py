@@ -45,6 +45,10 @@ def test_version_response_supports_files_and_links(schema, kind):
             {
                 "location_slug": "handbook",
                 "location_display_name": "Handbook",
+                "uploaded_by_id": uuid4(),
+                "is_own": False,
+                "can_approve": True,
+                "can_reject": True,
             }
         )
 

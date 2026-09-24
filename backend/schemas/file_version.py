@@ -142,7 +142,13 @@ class PendingVersionResponse(BaseModel):
     file_size_bytes: int | None
     version_number: int
     uploaded_by: str
+    uploaded_by_id: uuid.UUID
     uploaded_at: datetime
+    # What the requesting user may do to this version. `is_own and can_approve`
+    # means approving it would be self-approval.
+    is_own: bool
+    can_approve: bool
+    can_reject: bool
 
     @classmethod
     def from_version(
@@ -151,6 +157,9 @@ class PendingVersionResponse(BaseModel):
         *,
         location_slug: str,
         location_display_name: str,
+        is_own: bool,
+        can_approve: bool,
+        can_reject: bool,
     ) -> Self:
         return cls.model_validate(
             {
@@ -165,7 +174,11 @@ class PendingVersionResponse(BaseModel):
                 "file_size_bytes": version.file_size_bytes,
                 "version_number": version.version_number,
                 "uploaded_by": version.uploaded_by,
+                "uploaded_by_id": version.uploaded_by_id,
                 "uploaded_at": version.uploaded_at,
+                "is_own": is_own,
+                "can_approve": can_approve,
+                "can_reject": can_reject,
             }
         )
 

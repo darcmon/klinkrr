@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 import os
 from uuid import uuid4
 
@@ -43,7 +44,7 @@ async def version_database():
                 )
             )
 
-        yield engine, sessions, location_id, user_id
+        yield engine, sessions, location_id, user_id, organization_id
     finally:
         try:
             async with engine.begin() as connection:
@@ -72,7 +73,7 @@ async def version_database():
 async def test_concurrent_submissions_get_distinct_numbers(
     version_database, first_kind, second_kind
 ):
-    engine, sessions, location_id, user_id = version_database
+    engine, sessions, location_id, user_id, organization_id = version_database
     service = ApprovalService()
 
     async def create_version(db, kind, label):
@@ -150,7 +151,7 @@ async def test_concurrent_submissions_get_distinct_numbers(
 
 @pytest.mark.asyncio
 async def test_concurrent_approvals_leave_one_approved_version(version_database):
-    engine, sessions, location_id, user_id = version_database
+    engine, sessions, location_id, user_id, organization_id = version_database
     service = ApprovalService()
 
     # Create two pending versions and make them visible to both sessions.
@@ -182,6 +183,9 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
             version_id=first_id,
             reviewed_by="first-admin@example.com",
             reviewed_by_id=user_id,
+            organization_id=organization_id,
+            can_approve_own=True,
+            can_review_others=True,
         )
 
         # The first approval has not committed yet.
@@ -191,6 +195,9 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
                 version_id=second_id,
                 reviewed_by="second-admin@example.com",
                 reviewed_by_id=user_id,
+                organization_id=organization_id,
+                can_approve_own=True,
+                can_review_others=True,
             )
         )
 
@@ -248,7 +255,7 @@ async def test_concurrent_approvals_leave_one_approved_version(version_database)
 async def test_competing_reviews_preserve_first_decision(
     version_database, first_action
 ):
-    engine, sessions, location_id, user_id = version_database
+    engine, sessions, location_id, user_id, organization_id = version_database
     service = ApprovalService()
 
     async with sessions() as setup_db:
@@ -262,13 +269,25 @@ async def test_competing_reviews_preserve_first_decision(
         await setup_db.commit()
         version_id = version.id
 
+    approve = partial(
+        service.approve_version,
+        organization_id=organization_id,
+        can_approve_own=True,
+        can_review_others=True,
+    )
+    reject = partial(
+        service.reject_version,
+        organization_id=organization_id,
+        can_review_others=True,
+    )
+
     if first_action == "approve":
-        first_method = service.approve_version
-        second_method = service.reject_version
+        first_method = approve
+        second_method = reject
         expected_status = "approved"
     else:
-        first_method = service.reject_version
-        second_method = service.approve_version
+        first_method = reject
+        second_method = approve
         expected_status = "rejected"
 
     async with sessions() as first_db, sessions() as second_db:
@@ -339,7 +358,7 @@ async def test_competing_reviews_preserve_first_decision(
 async def test_auto_publish_preserves_older_pending_versions(
     version_database, current_kind, new_kind
 ):
-    _engine, sessions, location_id, user_id = version_database
+    _engine, sessions, location_id, user_id, organization_id = version_database
     service = ApprovalService()
 
     async def create_version(db, kind, label):
@@ -371,6 +390,9 @@ async def test_auto_publish_preserves_older_pending_versions(
                 version_id=current.id,
                 reviewed_by="admin@example.com",
                 reviewed_by_id=user_id,
+                organization_id=organization_id,
+                can_approve_own=True,
+                can_review_others=True,
             )
 
             older_pending = await service.create_pending_link_version(
@@ -409,7 +431,7 @@ async def test_auto_publish_preserves_older_pending_versions(
 async def test_submission_waits_for_governance_change(
     version_database, approval_required
 ):
-    engine, sessions, location_id, user_id = version_database
+    engine, sessions, location_id, user_id, organization_id = version_database
     service = ApprovalService()
 
     async with sessions() as setup_db:

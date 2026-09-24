@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
-from backend.dependencies import get_current_admin
+from backend.dependencies import get_current_admin, get_current_membership
 from backend.routers import locations
 
 
@@ -60,6 +60,11 @@ async def test_governance_update_preserves_publication_and_audits_changes(
     app.include_router(locations.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
@@ -119,6 +124,11 @@ async def test_governance_update_returns_404_for_missing_location(monkeypatch):
     app.include_router(locations.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),

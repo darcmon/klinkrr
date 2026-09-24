@@ -16,6 +16,7 @@ async def test_approving_link_schedules_cache_invalidation():
     location = SimpleNamespace(
         id=location_id,
         slug="handbook",
+        organization_id=uuid4(),
         current_approved_version_id=old_version_id,
     )
     version = SimpleNamespace(
@@ -44,6 +45,9 @@ async def test_approving_link_schedules_cache_invalidation():
         version_id=version.id,
         reviewed_by="admin@example.com",
         reviewed_by_id=reviewer_id,
+        organization_id=location.organization_id,
+        can_approve_own=True,
+        can_review_others=True,
     )
 
     assert approved.status == "approved"

@@ -14,7 +14,14 @@ from backend.dependencies import (
 )
 from backend.models.location import Location
 from backend.routers import locations
-from backend.services.approval_service import ApprovalService, SelfApprovalNotAllowed
+from backend.services.approval_service import (
+    ApprovalService,
+    ReviewNotAllowed,
+    VersionNotFound,
+)
+
+
+ORGANIZATION_ID = uuid4()
 
 
 def review_db(version, location):
@@ -37,45 +44,99 @@ def pending_version(uploader_id):
     )
 
 
-@pytest.mark.asyncio
-async def test_uploader_cannot_approve_own_version_when_disallowed():
-    uploader_id = uuid4()
-    version = pending_version(uploader_id)
-    location = SimpleNamespace(id=version.location_id, slug="documents")
+def location_for(version, organization_id=ORGANIZATION_ID):
+    return SimpleNamespace(
+        id=version.location_id,
+        slug="documents",
+        organization_id=organization_id,
+        current_approved_version_id=None,
+    )
 
-    with pytest.raises(SelfApprovalNotAllowed):
-        await ApprovalService().approve_version(
-            db=review_db(version, location),
+
+# (own version?, can_approve_own, can_review_others) -> allowed?
+APPROVAL_CASES = [
+    (True, True, False, True),
+    (True, False, True, False),  # reviewing others doesn't cover your own
+    (False, False, True, True),
+    (False, True, False, False),  # approving your own doesn't cover others'
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("own", "can_approve_own", "can_review_others", "allowed"), APPROVAL_CASES
+)
+async def test_approval_rules(own, can_approve_own, can_review_others, allowed):
+    uploader_id = uuid4()
+    reviewer_id = uploader_id if own else uuid4()
+    version = pending_version(uploader_id)
+
+    async def approve():
+        return await ApprovalService().approve_version(
+            db=review_db(version, location_for(version)),
             version_id=version.id,
-            reviewed_by="uploader@example.com",
-            reviewed_by_id=uploader_id,
-            allow_self_approval=False,
+            reviewed_by="reviewer@example.com",
+            reviewed_by_id=reviewer_id,
+            organization_id=ORGANIZATION_ID,
+            can_approve_own=can_approve_own,
+            can_review_others=can_review_others,
         )
 
-    assert version.status == "pending"
+    if allowed:
+        approved, _ = await approve()
+        assert approved.status == "approved"
+        assert approved.reviewed_by_id == reviewer_id
+    else:
+        with pytest.raises(ReviewNotAllowed):
+            await approve()
+        assert version.status == "pending"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("same_person", [True, False])
-async def test_approval_allowed_when_permitted_or_by_someone_else(same_person):
+@pytest.mark.parametrize(
+    ("own", "can_review_others", "allowed"),
+    [(True, False, True), (False, True, True), (False, False, False)],
+)
+async def test_rejection_rules(own, can_review_others, allowed):
     uploader_id = uuid4()
-    reviewer_id = uploader_id if same_person else uuid4()
+    reviewer_id = uploader_id if own else uuid4()
     version = pending_version(uploader_id)
-    location = SimpleNamespace(
-        id=version.location_id, slug="documents", current_approved_version_id=None
-    )
 
-    approved, _ = await ApprovalService().approve_version(
-        db=review_db(version, location),
-        version_id=version.id,
-        reviewed_by="reviewer@example.com",
-        reviewed_by_id=reviewer_id,
-        # A different reviewer is always allowed, whatever the policy.
-        allow_self_approval=same_person,
-    )
+    async def reject():
+        return await ApprovalService().reject_version(
+            db=review_db(version, location_for(version)),
+            version_id=version.id,
+            reviewed_by="reviewer@example.com",
+            reviewed_by_id=reviewer_id,
+            organization_id=ORGANIZATION_ID,
+            can_review_others=can_review_others,
+        )
 
-    assert approved.status == "approved"
-    assert approved.reviewed_by_id == reviewer_id
+    if allowed:
+        rejected, _ = await reject()
+        assert rejected.status == "rejected"
+    else:
+        with pytest.raises(ReviewNotAllowed):
+            await reject()
+        assert version.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_version_in_another_organization_is_not_found():
+    version = pending_version(uuid4())
+    other_organization = location_for(version, organization_id=uuid4())
+
+    with pytest.raises(VersionNotFound):
+        await ApprovalService().approve_version(
+            db=review_db(version, other_organization),
+            version_id=version.id,
+            reviewed_by="reviewer@example.com",
+            reviewed_by_id=uuid4(),
+            organization_id=ORGANIZATION_ID,
+            can_approve_own=True,
+            can_review_others=True,
+        )
+    assert version.status == "pending"
 
 
 @pytest.mark.asyncio
@@ -119,7 +180,7 @@ async def test_create_location_records_organization_creator_and_policy(
     approval_required, expected
 ):
     admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
-    membership = SimpleNamespace(organization_id=uuid4())
+    membership = SimpleNamespace(organization_id=uuid4(), role="manager")
 
     db = MagicMock(spec=AsyncSession)
     existing = MagicMock()

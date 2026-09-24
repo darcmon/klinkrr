@@ -5,10 +5,16 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
-from backend.dependencies import get_current_admin, get_current_membership
+from backend.dependencies import (
+    get_current_admin,
+    get_current_membership,
+    require_permission,
+)
 from backend.models.admin_user import AdminUser
 from backend.models.location import Location
 from backend.models.organization import Membership
+from backend.permissions import has_permission
+from backend.services import scoping
 from backend.services.audit_service import audit_service
 from backend.schemas.location import (
     LocationCreate,
@@ -23,14 +29,13 @@ router = APIRouter(prefix="/admin/locations", tags=["locations"])
 @router.get("", response_model=LocationListResponse)
 async def list_locations(
     db: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
-    result = await db.execute(
-        select(Location).where(Location.deleted_at.is_(None)).order_by(Location.slug)
-    )
+    query = scoping.active_locations(membership.organization_id)
+    result = await db.execute(query.order_by(Location.slug))
     locations = result.scalars().all()
     count_result = await db.execute(
-        select(func.count(Location.id)).where(Location.deleted_at.is_(None))
+        select(func.count()).select_from(query.subquery())
     )
     total = count_result.scalar_one()
     return LocationListResponse(
@@ -44,9 +49,18 @@ async def create_location(
     body: LocationCreate,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
-    membership: Membership = Depends(get_current_membership),
+    membership: Membership = Depends(require_permission("create_location")),
 ):
-    # Check slug uniqueness
+    if not body.approval_required and not has_permission(
+        membership.role, "manage_locations"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only managers can create a location that publishes without approval",
+        )
+
+    # Slugs are one global namespace across organizations (they are the
+    # public URL), and deleted locations keep theirs, so this is unscoped.
     existing = await db.execute(select(Location).where(Location.slug == body.slug))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Slug already exists")
@@ -69,12 +83,9 @@ async def create_location(
 async def get_location(
     slug: str,
     db: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
-    result = await db.execute(
-        select(Location).where(Location.slug == slug, Location.deleted_at.is_(None))
-    )
-    location = result.scalar_one_or_none()
+    location = await scoping.get_location(db, membership.organization_id, slug)
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")
     return location
@@ -87,20 +98,36 @@ async def update_location(
     request: Request,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
-    result = await db.execute(
-        select(Location)
-        .where(Location.slug == slug, Location.deleted_at.is_(None))
-        .with_for_update()
-        .execution_options(populate_existing=True)
+    location = await scoping.get_location(
+        db, membership.organization_id, slug, for_update=True
     )
-    location = result.scalar_one_or_none()
     if location is None:
         raise HTTPException(status_code=404, detail="Location not found")
 
     previous_approval_required = location.approval_required
 
     update_data = body.model_dump(exclude_unset=True)
+    can_manage = has_permission(membership.role, "manage_locations")
+
+    changes_policy = (
+        "approval_required" in update_data
+        and update_data["approval_required"] != previous_approval_required
+    )
+    if changes_policy and not can_manage:
+        raise HTTPException(
+            status_code=403,
+            detail="Only managers can change a location's approval setting",
+        )
+
+    changes_details = any(field != "approval_required" for field in update_data)
+    if changes_details and not (can_manage or location.created_by_id == admin.id):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only edit locations you created",
+        )
+
     for field, value in update_data.items():
         setattr(location, field, value)
 

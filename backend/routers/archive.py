@@ -1,15 +1,17 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from fastapi.responses import StreamingResponse
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
-from backend.dependencies import get_current_admin
+from backend.dependencies import get_current_admin, get_current_membership
 from backend.models.admin_user import AdminUser
-from backend.models.location import Location
-from backend.models.file_version import FileVersion
+from backend.models.organization import Membership
+from backend.permissions import has_permission
+from backend.services import scoping
 from backend.schemas.file_version import VersionArchiveResponse, FileVersionResponse
 from backend.services.approval_service import approval_service
 from backend.services.file_service import file_service
@@ -24,13 +26,9 @@ async def list_versions(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
-    # Find the location
-    result = await db.execute(
-        select(Location).where(Location.slug == slug, Location.deleted_at.is_(None))
-    )
-    location = result.scalar_one_or_none()
+    location = await scoping.get_location(db, membership.organization_id, slug)
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")
     versions, total = await approval_service.get_versions_for_location(
@@ -53,12 +51,12 @@ async def list_versions(
 
 @router.get("/versions/{version_id}/download")
 async def download_version(
-    version_id: str,
+    version_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
-    version = await db.get(FileVersion, version_id)
-    if not version or version.deleted_at is not None:
+    version = await scoping.get_version(db, membership.organization_id, version_id)
+    if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
     if version.kind == "link":
@@ -77,10 +75,22 @@ async def download_version(
 
 @router.delete("/versions/{version_id}", status_code=204)
 async def delete_version(
-    version_id: str,
+    version_id: UUID,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(get_current_membership),
 ):
+    version = await scoping.get_version(db, membership.organization_id, version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    if version.uploaded_by_id != admin.id and not has_permission(
+        membership.role, "manage_locations"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only delete versions you uploaded",
+        )
+
     try:
         await approval_service.soft_delete_version(db=db, version_id=version_id)
     except ValueError as e:

@@ -5,9 +5,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
-from backend.dependencies import verify_password, create_access_token, get_current_admin
+from backend.dependencies import (
+    create_access_token,
+    get_current_admin,
+    load_membership,
+    verify_password,
+)
 from backend.models.admin_user import AdminUser
-from backend.schemas.auth import LoginRequest, TokenResponse, AdminUserResponse
+from backend.permissions import permissions_for
+from backend.schemas.auth import (
+    AdminUserResponse,
+    LoginRequest,
+    OrganizationSummary,
+    TokenResponse,
+)
 
 router = APIRouter(prefix="/admin", tags=["auth"])
 
@@ -36,5 +47,20 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=AdminUserResponse)
-async def get_me(admin: AdminUser = Depends(get_current_admin)):
-    return admin
+async def get_me(
+    admin: AdminUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    membership = await load_membership(db, admin.id)
+    return AdminUserResponse(
+        id=admin.id,
+        email=admin.email,
+        display_name=admin.display_name,
+        organization=(
+            OrganizationSummary.model_validate(membership.organization)
+            if membership
+            else None
+        ),
+        role=membership.role if membership else None,
+        permissions=permissions_for(membership.role) if membership else [],
+    )

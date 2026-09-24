@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.db.session import get_db
-from backend.dependencies import get_current_admin, get_web_risk_client
+from backend.dependencies import (
+    get_current_admin,
+    get_web_risk_client,
+    require_permission,
+)
 from backend.models.admin_user import AdminUser
-from backend.models.location import Location
+from backend.models.organization import Membership
 from backend.schemas.file_version import (
     FileVersionUploadResponse,
     LinkVersionCreate,
@@ -15,6 +18,7 @@ from backend.schemas.file_version import (
 from backend.services.file_service import file_service
 from backend.services.approval_service import approval_service
 from backend.services.audit_service import audit_service
+from backend.services.scoping import get_location
 from backend.services.web_risk_client import WebRiskClient, WebRiskError
 
 router = APIRouter(prefix="/admin", tags=["upload"])
@@ -31,14 +35,12 @@ async def upload_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(require_permission("submit")),
 ):
     settings = get_settings()
 
     # 1. Find the location
-    result = await db.execute(
-        select(Location).where(Location.slug == slug, Location.deleted_at.is_(None))
-    )
-    location = result.scalar_one_or_none()
+    location = await get_location(db, membership.organization_id, slug)
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")
 
@@ -119,16 +121,10 @@ async def create_link(
     request: Request,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    membership: Membership = Depends(require_permission("submit")),
     web_risk: WebRiskClient = Depends(get_web_risk_client),
 ):
-    result = await db.execute(
-        select(Location).where(
-            Location.slug == slug,
-            Location.deleted_at.is_(None),
-        )
-    )
-    location = result.scalar_one_or_none()
-
+    location = await get_location(db, membership.organization_id, slug)
     if location is None:
         raise HTTPException(status_code=404, detail="Location not found")
 

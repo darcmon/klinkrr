@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend import dependencies
 from backend.dependencies import (
     get_current_admin,
+    get_current_membership,
     get_db,
     get_web_risk_client,
 )
@@ -41,6 +42,11 @@ async def test_flagged_url_does_not_create_version(monkeypatch):
     app.include_router(upload.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
     app.dependency_overrides[get_web_risk_client] = lambda: web_risk
 
     transport = httpx.ASGITransport(app=app)
@@ -85,6 +91,11 @@ async def test_invalid_url_is_rejected_before_business_logic(monkeypatch, url):
     app.include_router(upload.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
     app.dependency_overrides[get_web_risk_client] = lambda: web_risk
 
     transport = httpx.ASGITransport(app=app)
@@ -130,6 +141,11 @@ async def test_web_risk_failure_does_not_create_version(monkeypatch):
     app.include_router(upload.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
     app.dependency_overrides[get_web_risk_client] = lambda: web_risk
 
     transport = httpx.ASGITransport(app=app)
@@ -197,6 +213,11 @@ async def test_clear_url_returns_submission_outcome(monkeypatch, final_status):
     app.include_router(upload.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
     app.dependency_overrides[get_web_risk_client] = lambda: web_risk
 
     transport = httpx.ASGITransport(app=app)
@@ -267,6 +288,11 @@ async def test_missing_location_does_not_create_version(monkeypatch):
     app.include_router(upload.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
     app.dependency_overrides[get_web_risk_client] = lambda: web_risk
 
     transport = httpx.ASGITransport(app=app)
@@ -339,6 +365,11 @@ async def test_missing_web_risk_key_blocks_creation(monkeypatch):
     app.include_router(upload.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(

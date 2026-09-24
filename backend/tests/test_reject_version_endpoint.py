@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.dependencies import get_current_admin, get_db
+from backend.dependencies import get_current_admin, get_current_membership, get_db
 from backend.services.audit_service import AuditService
 from backend.routers import approval
 
@@ -34,6 +34,11 @@ async def test_rejecting_reviewed_version_returns_readable_error(monkeypatch):
     app.include_router(approval.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     version_id = uuid4()
     transport = httpx.ASGITransport(app=app)
@@ -51,6 +56,8 @@ async def test_rejecting_reviewed_version_returns_readable_error(monkeypatch):
         version_id=version_id,
         reviewed_by=admin.email,
         reviewed_by_id=admin.id,
+        organization_id=ANY,
+        can_review_others=True,
         notes=None,
     )
     audit_log.assert_not_called()
@@ -83,6 +90,11 @@ async def test_rejection_returns_review_and_records_audit(monkeypatch):
     app.include_router(approval.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
@@ -107,6 +119,8 @@ async def test_rejection_returns_review_and_records_audit(monkeypatch):
         version_id=version.id,
         reviewed_by=admin.email,
         reviewed_by_id=admin.id,
+        organization_id=ANY,
+        can_review_others=True,
         notes="Please update the document.",
     )
     db.get.assert_not_called()

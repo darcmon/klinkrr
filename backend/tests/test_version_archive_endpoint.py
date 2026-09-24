@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.dependencies import get_current_admin, get_db
+from backend.dependencies import get_current_admin, get_current_membership, get_db
 from backend.routers import archive
 
 
@@ -54,6 +54,11 @@ async def test_archive_includes_link_fields(monkeypatch):
     app.include_router(archive.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
@@ -96,7 +101,9 @@ async def test_link_download_is_rejected(monkeypatch):
     )
 
     db = MagicMock(spec=AsyncSession)
-    db.get.return_value = version
+    lookup = MagicMock()
+    lookup.scalar_one_or_none.return_value = version
+    db.execute.return_value = lookup
     admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
 
     stream_file = MagicMock()
@@ -110,6 +117,11 @@ async def test_link_download_is_rejected(monkeypatch):
     app.include_router(archive.router)
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_admin] = lambda: admin
+    app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
+        role="owner",
+        organization_id=uuid4(),
+        organization=SimpleNamespace(allow_self_approval=True),
+    )
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(

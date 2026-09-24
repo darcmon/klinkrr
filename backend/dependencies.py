@@ -14,6 +14,7 @@ from backend.config import get_settings
 from backend.db.session import get_db
 from backend.models.admin_user import AdminUser
 from backend.models.organization import Membership
+from backend.permissions import Permission, has_permission
 from backend.services.web_risk_client import WebRiskClient
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -95,6 +96,20 @@ async def get_current_admin(
     return user
 
 
+async def load_membership(db: AsyncSession, user_id) -> Membership | None:
+    """The user's only membership, or None. Users belong to exactly one
+    organization until organization switching exists."""
+    result = await db.execute(select(Membership).where(Membership.user_id == user_id))
+    memberships = result.scalars().all()
+
+    if len(memberships) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Belonging to more than one organization is not supported yet",
+        )
+    return memberships[0] if memberships else None
+
+
 async def get_current_membership(
     admin: AdminUser = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
@@ -102,24 +117,32 @@ async def get_current_membership(
     """The signed-in user's membership, with its organization loaded.
 
     Looked up on every request rather than stored in the JWT, so role changes
-    apply immediately. Users belong to exactly one organization until
-    organization switching exists.
+    apply immediately.
     """
-    result = await db.execute(select(Membership).where(Membership.user_id == admin.id))
-    memberships = result.scalars().all()
-
-    if not memberships:
+    membership = await load_membership(db, admin.id)
+    if membership is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not a member of any organization",
         )
-    if len(memberships) > 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Belonging to more than one organization is not supported yet",
-        )
+    return membership
 
-    return memberships[0]
+
+def require_permission(permission: Permission):
+    """Dependency that returns the caller's membership if their role has
+    `permission`, and raises 403 otherwise."""
+
+    async def check(
+        membership: Membership = Depends(get_current_membership),
+    ) -> Membership:
+        if not has_permission(membership.role, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your role doesn't allow this",
+            )
+        return membership
+
+    return check
 
 
 async def get_web_risk_client() -> AsyncIterator[WebRiskClient]:
