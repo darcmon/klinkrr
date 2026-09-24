@@ -28,7 +28,15 @@ export type Version = VersionBase & (FilePayload | LinkPayload);
 export type PendingVersion = Version & {
   location_slug: string;
   location_display_name: string;
+  uploaded_by_id: string;
+  // What the signed-in user may do to this version, decided by the server.
+  // `is_own && can_approve` means approving it would be self-approval.
+  is_own: boolean;
+  can_approve: boolean;
+  can_reject: boolean;
 };
+
+export type PendingFilter = 'waiting_on_me' | 'mine' | 'all';
 
 export type ArchivedVersion = Version & {
   location_id: string;

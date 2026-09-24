@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import api from '../api/client';
-import { nextTick, ref, onMounted } from 'vue';
+import { computed, nextTick, ref, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { formatDate } from '../utils/format';
-import type { PendingVersion } from '../types/version';
+import { useCurrentUser } from '../composables/useCurrentUser';
+import type { PendingFilter, PendingVersion } from '../types/version';
 
 import BaseField from '../components/BaseField.vue';
 import BaseModal from '../components/BaseModal.vue';
@@ -10,6 +12,11 @@ import BaseButton from '../components/BaseButton.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import StateMessage from '../components/StateMessage.vue';
 import VersionSummary from '../components/VersionSummary.vue';
+import PendingVersionActions from '../components/PendingVersionActions.vue';
+
+const route = useRoute();
+const router = useRouter();
+const { load: loadCurrentUser, can } = useCurrentUser();
 
 const pending = ref<PendingVersion[]>([]);
 const loading = ref(true);
@@ -22,45 +29,99 @@ const rejectionTarget = ref<PendingVersion | null>(null);
 const rejectionNotes = ref('');
 const rejectionError = ref('');
 const dashboardHeading = ref<HTMLHeadingElement | null>(null);
+const userReady = ref(false);
+let latestRequest = 0;
 
-async function loadPending() {
-  loading.value = true;
-  loadError.value = '';
+const filterOptions = computed(() => {
+  const options: { value: PendingFilter; label: string }[] = [];
+  if (can('review_any')) {
+    options.push({ value: 'waiting_on_me', label: 'Waiting on me' });
+  }
+  options.push(
+    { value: 'mine', label: 'My submissions' },
+    { value: 'all', label: 'All pending' },
+  );
+  return options;
+});
+
+// Kept in the URL so it survives reloads and back/forward.
+const filter = computed<PendingFilter>(() => {
+  const match = filterOptions.value.find(
+    (option) => option.value === route.query.filter,
+  );
+  if (match) return match.value;
+  return can('review_any') ? 'waiting_on_me' : 'mine';
+});
+
+const emptyMessage = computed(
+  () =>
+    ({
+      waiting_on_me: 'Nothing is waiting on you.',
+      mine: 'You have no pending submissions.',
+      all: 'No pending versions.',
+    })[filter.value],
+);
+
+function setFilter(value: PendingFilter) {
+  if (value === filter.value) return;
+
+  successMessage.value = '';
+  actionError.value = '';
+  router.replace({ query: { ...route.query, filter: value } });
+}
+
+// A quiet load refreshes the list without replacing it with a loading state.
+async function loadPending({ quiet = false } = {}) {
+  const request = ++latestRequest;
+
+  if (!quiet) {
+    loading.value = true;
+    loadError.value = '';
+  }
 
   try {
-    const data = await api.get('/admin/versions/pending');
+    const data = await api.get(
+      `/admin/versions/pending?filter=${filter.value}`,
+    );
 
-    if (data === undefined) return;
+    // Ignore responses for a filter the user has already moved away from.
+    if (data === undefined || request !== latestRequest) return;
 
     pending.value = data;
   } catch (e) {
+    if (request !== latestRequest || quiet) return;
+
     loadError.value =
       e instanceof Error ? e.message : 'Failed to load pending versions';
   } finally {
-    loading.value = false;
+    if (request === latestRequest) loading.value = false;
   }
 }
 
-async function approve(id: string) {
+async function approve(version: PendingVersion) {
   if (actioningId.value !== null) return;
 
   actionError.value = '';
   successMessage.value = '';
-  actioningId.value = id;
+  actioningId.value = version.id;
   actionKind.value = 'approve';
 
   try {
-    const result = await api.post(`/admin/versions/${id}/approve`);
+    const result = await api.post(`/admin/versions/${version.id}/approve`);
 
     if (result === undefined) return;
 
-    successMessage.value = 'Version approved.';
+    successMessage.value = version.is_own
+      ? `Version ${version.version_number} approved and published. Approving your own submission is recorded in the audit log.`
+      : `Version ${version.version_number} approved and published.`;
     await loadPending();
 
     await nextTick();
     dashboardHeading.value?.focus();
   } catch (e) {
     actionError.value = e instanceof Error ? e.message : 'Approve failed';
+    // What this user may do can change, e.g. self-approval being turned off.
+    await loadPending({ quiet: true });
   } finally {
     actioningId.value = null;
     actionKind.value = null;
@@ -97,7 +158,9 @@ async function submitRejection() {
 
     if (result === undefined) return;
 
-    successMessage.value = `Version ${version.version_number} rejected. Published content is unchanged.`;
+    successMessage.value = version.is_own
+      ? `Version ${version.version_number} withdrawn. Published content is unchanged.`
+      : `Version ${version.version_number} rejected. Published content is unchanged.`;
 
     await loadPending();
     rejectionTarget.value = null;
@@ -106,13 +169,26 @@ async function submitRejection() {
     dashboardHeading.value?.focus();
   } catch (e) {
     rejectionError.value = e instanceof Error ? e.message : 'Reject failed';
+    await loadPending({ quiet: true });
   } finally {
     actioningId.value = null;
     actionKind.value = null;
   }
 }
 
-onMounted(loadPending);
+onMounted(async () => {
+  try {
+    await loadCurrentUser();
+  } catch {
+    // Fall back to "My submissions". Each item's actions still come from the
+    // server, so nothing is offered that the user can't do.
+  }
+  userReady.value = true;
+});
+
+watch([userReady, filter], ([ready]) => {
+  if (ready) loadPending();
+});
 </script>
 
 <template>
@@ -123,6 +199,26 @@ onMounted(loadPending);
         Review pending files and links before they go live.
       </p>
     </header>
+
+    <fieldset v-if="userReady" class="pending-filter">
+      <legend class="visually-hidden">Show pending versions</legend>
+
+      <label
+        v-for="option in filterOptions"
+        :key="option.value"
+        class="filter-option"
+      >
+        <input
+          type="radio"
+          name="pending-filter"
+          class="filter-input"
+          :value="option.value"
+          :checked="filter === option.value"
+          @change="setFilter(option.value)"
+        />
+        <span>{{ option.label }}</span>
+      </label>
+    </fieldset>
 
     <StateMessage
       v-if="successMessage"
@@ -142,10 +238,7 @@ onMounted(loadPending);
       </template>
     </StateMessage>
 
-    <StateMessage
-      v-else-if="pending.length === 0"
-      message="No pending versions to review."
-    />
+    <StateMessage v-else-if="pending.length === 0" :message="emptyMessage" />
 
     <template v-else>
       <ul class="pending-list" role="list">
@@ -172,27 +265,15 @@ onMounted(loadPending);
               {{ formatDate(v.uploaded_at) }}
             </time>
           </div>
-          <div class="actions">
-            <BaseButton :disabled="actioningId !== null" @click="approve(v.id)">
-              {{
-                actioningId === v.id && actionKind === 'approve'
-                  ? 'Approving…'
-                  : 'Approve'
-              }}
-            </BaseButton>
-
-            <BaseButton
-              variant="secondary"
-              :disabled="actioningId !== null"
-              @click="openReject(v)"
-            >
-              {{
-                actioningId === v.id && actionKind === 'reject'
-                  ? 'Rejecting…'
-                  : 'Reject…'
-              }}
-            </BaseButton>
-          </div>
+          <PendingVersionActions
+            :version="v"
+            id-prefix="list"
+            :busy="actioningId !== null"
+            :approving="actioningId === v.id && actionKind === 'approve'"
+            :rejecting="actioningId === v.id && actionKind === 'reject'"
+            @approve="approve(v)"
+            @reject="openReject(v)"
+          />
         </li>
       </ul>
       <div class="pending-table data-table-frame">
@@ -253,30 +334,16 @@ onMounted(loadPending);
               </td>
 
               <td>
-                <div class="data-table-actions">
-                  <BaseButton
-                    :disabled="actioningId !== null"
-                    @click="approve(v.id)"
-                  >
-                    {{
-                      actioningId === v.id && actionKind === 'approve'
-                        ? 'Approving…'
-                        : 'Approve'
-                    }}
-                  </BaseButton>
-
-                  <BaseButton
-                    variant="secondary"
-                    :disabled="actioningId !== null"
-                    @click="openReject(v)"
-                  >
-                    {{
-                      actioningId === v.id && actionKind === 'reject'
-                        ? 'Rejecting…'
-                        : 'Reject…'
-                    }}
-                  </BaseButton>
-                </div>
+                <PendingVersionActions
+                  :version="v"
+                  id-prefix="table"
+                  layout="inline"
+                  :busy="actioningId !== null"
+                  :approving="actioningId === v.id && actionKind === 'approve'"
+                  :rejecting="actioningId === v.id && actionKind === 'reject'"
+                  @approve="approve(v)"
+                  @reject="openReject(v)"
+                />
               </td>
             </tr>
           </tbody>
@@ -286,11 +353,18 @@ onMounted(loadPending);
     <BaseModal
       v-if="rejectionTarget"
       id="reject-version"
-      title="Reject this version?"
+      :title="
+        rejectionTarget.is_own
+          ? 'Withdraw this version?'
+          : 'Reject this version?'
+      "
       :busy="actioningId !== null"
       @close="closeReject"
     >
       <p class="text-muted">
+        <template v-if="rejectionTarget.is_own">
+          It won't be published.
+        </template>
         The public link keeps serving its currently published content.
       </p>
 
@@ -339,7 +413,12 @@ onMounted(loadPending);
           :disabled="actioningId !== null"
           @click="submitRejection"
         >
-          {{ actioningId !== null ? 'Rejecting…' : 'Reject version' }}
+          <template v-if="rejectionTarget.is_own">
+            {{ actioningId !== null ? 'Withdrawing…' : 'Withdraw version' }}
+          </template>
+          <template v-else>
+            {{ actioningId !== null ? 'Rejecting…' : 'Reject version' }}
+          </template>
         </BaseButton>
       </template>
     </BaseModal>
@@ -396,10 +475,50 @@ onMounted(loadPending);
   overflow-wrap: anywhere;
 }
 
-.actions {
+.pending-filter {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  background-color: var(--color-surface-muted);
+}
+
+.filter-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-small);
+  color: var(--color-muted);
+  font-weight: var(--weight-semibold);
+  text-align: center;
+  cursor: pointer;
+}
+
+.filter-option:has(.filter-input:checked) {
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+/* The radio is invisible, so its focus ring is drawn on the label. */
+.filter-option:has(.filter-input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.filter-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .notes-input {
@@ -418,6 +537,10 @@ onMounted(loadPending);
 }
 
 @media (min-width: 768px) {
+  .pending-filter {
+    width: fit-content;
+  }
+
   .pending-list {
     display: none;
   }
