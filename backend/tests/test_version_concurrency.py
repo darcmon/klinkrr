@@ -305,3 +305,157 @@ async def test_competing_reviews_preserve_first_decision(
 
         expected_published_id = version_id if first_action == "approve" else None
         assert saved_location.current_approved_version_id == expected_published_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("current_kind", ["file", "link"])
+@pytest.mark.parametrize("new_kind", ["file", "link"])
+async def test_auto_publish_preserves_older_pending_versions(
+    version_database, current_kind, new_kind
+):
+    _engine, sessions, location_id = version_database
+    service = ApprovalService()
+
+    async def create_version(db, kind, label):
+        if kind == "link":
+            return await service.create_pending_link_version(
+                db=db,
+                location_id=location_id,
+                link_url=f"https://example.com/{label}",
+                uploaded_by="admin@example.com",
+            )
+
+        return await service.create_pending_version(
+            db=db,
+            location_id=location_id,
+            original_filename=f"{label}.pdf",
+            content_type="application/pdf",
+            file_size_bytes=100,
+            s3_key=f"test/{location_id}/{label}.pdf",
+            uploaded_by="admin@example.com",
+        )
+
+    async with sessions() as db:
+        try:
+            current = await create_version(db, current_kind, "current")
+            await service.approve_version(
+                db=db,
+                version_id=current.id,
+                reviewed_by="admin@example.com",
+            )
+
+            older_pending = await service.create_pending_link_version(
+                db=db,
+                location_id=location_id,
+                link_url="https://example.com/waiting",
+                uploaded_by="admin@example.com",
+            )
+
+            location = await db.get(Location, location_id)
+            assert location is not None
+            location.approval_required = False
+            await db.flush()
+
+            newest = await create_version(db, new_kind, "newest")
+            await service.apply_submission_governance(db, newest)
+
+            await db.refresh(current)
+            await db.refresh(older_pending)
+            await db.refresh(newest)
+            await db.refresh(location)
+
+            assert current.status == "superseded"
+            assert older_pending.status == "pending"
+            assert newest.status == "approved"
+            assert location.current_approved_version_id == newest.id
+            assert newest.reviewed_by is None
+            assert newest.reviewed_at is None
+        finally:
+            await db.rollback()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("approval_required", [False, True])
+async def test_submission_waits_for_governance_change(
+    version_database, approval_required
+):
+    engine, sessions, location_id = version_database
+    service = ApprovalService()
+
+    async with sessions() as setup_db:
+        await setup_db.execute(
+            update(Location)
+            .where(Location.id == location_id)
+            .values(approval_required=not approval_required)
+        )
+        older_pending = await service.create_pending_link_version(
+            db=setup_db,
+            location_id=location_id,
+            link_url="https://example.com/older-pending",
+            uploaded_by="admin@example.com",
+        )
+        older_pending_id = older_pending.id
+        await setup_db.commit()
+
+    async with sessions() as settings_db, sessions() as submission_db:
+        # Match the router: load the location before the submission takes its lock.
+        cached_location = await submission_db.get(Location, location_id)
+        assert cached_location is not None
+        assert cached_location.approval_required is not approval_required
+
+        settings_pid = await settings_db.scalar(text("SELECT pg_backend_pid()"))
+        submission_pid = await submission_db.scalar(text("SELECT pg_backend_pid()"))
+
+        location = await settings_db.scalar(
+            select(Location).where(Location.id == location_id).with_for_update()
+        )
+        assert location is not None
+        location.approval_required = approval_required
+        await settings_db.flush()
+
+        async def submit():
+            version = await service.create_pending_link_version(
+                db=submission_db,
+                location_id=location_id,
+                link_url="https://example.com/new-submission",
+                uploaded_by="admin@example.com",
+            )
+            await service.apply_submission_governance(submission_db, version)
+            return version
+
+        submission_task = asyncio.create_task(submit())
+        try:
+            async with engine.connect() as observer:
+                async with asyncio.timeout(5):
+                    while True:
+                        blockers = await observer.scalar(
+                            text("SELECT pg_blocking_pids(:pid)"),
+                            {"pid": submission_pid},
+                        )
+                        if settings_pid in blockers:
+                            break
+                        assert not submission_task.done(), "Submission did not wait"
+                        await asyncio.sleep(0.05)
+
+            assert not submission_task.done()
+            await settings_db.commit()
+            version = await asyncio.wait_for(submission_task, timeout=5)
+
+            expected_status = "pending" if approval_required else "approved"
+            assert version.status == expected_status
+            # No explicit refresh: governance must refresh the previously loaded object.
+            assert cached_location.approval_required is approval_required
+            assert cached_location.current_approved_version_id == (
+                None if approval_required else version.id
+            )
+            older = await submission_db.get(FileVersion, older_pending_id)
+            assert older is not None
+            assert older.status == "pending"
+            assert version.reviewed_by is None
+            assert version.reviewed_at is None
+        finally:
+            if not submission_task.done():
+                submission_task.cancel()
+            await asyncio.gather(submission_task, return_exceptions=True)
+            # Roll back the new version and automatic-publication audit together.
+            await submission_db.rollback()

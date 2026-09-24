@@ -84,7 +84,7 @@ async def upload_file(
         uploaded_by=admin.email,
     )
 
-    await approval_service.apply_submission_governance(db, version)
+    await approval_service.apply_submission_governance(db, version, request=request)
 
     # 6. Audit log
     await audit_service.log(
@@ -101,20 +101,6 @@ async def upload_file(
             "location_slug": slug,
         },
     )
-
-    if version.status == "approved":
-        await audit_service.log(
-            db=db,
-            action="auto_publish",
-            entity_type="file_version",
-            entity_id=version.id,
-            actor=admin.email,
-            request=request,
-            details={
-                "location_slug": slug,
-                "approval_required": False,
-            },
-        )
 
     return FileVersionUploadResponse.from_version(version, location_slug=slug)
 
@@ -164,7 +150,7 @@ async def create_link(
         uploaded_by=admin.email,
     )
 
-    await approval_service.apply_submission_governance(db, version)
+    await approval_service.apply_submission_governance(db, version, request=request)
 
     await audit_service.log(
         db=db,
@@ -175,19 +161,5 @@ async def create_link(
         request=request,
         details={"location_slug": slug, "link_mode": version.link_mode},
     )
-
-    if version.status == "approved":
-        await audit_service.log(
-            db=db,
-            action="auto_publish",
-            entity_type="file_version",
-            entity_id=version.id,
-            actor=admin.email,
-            request=request,
-            details={
-                "location_slug": slug,
-                "approval_required": False,
-            },
-        )
 
     return LinkVersionCreateResponse.from_version(version, location_slug=slug)

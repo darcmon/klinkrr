@@ -1,11 +1,14 @@
-from datetime import datetime, timezone
 from uuid import UUID
+from fastapi import Request
+from datetime import datetime, timezone
+
 
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.location import Location
 from backend.models.file_version import FileVersion
+from backend.services.audit_service import audit_service
 
 
 class ApprovalService:
@@ -59,6 +62,8 @@ class ApprovalService:
         self,
         db: AsyncSession,
         version: FileVersion,
+        *,
+        request: Request | None = None,
     ) -> None:
         """Apply the location policy to a newly created pending version."""
         result = await db.execute(
@@ -78,6 +83,19 @@ class ApprovalService:
             return
 
         await self._publish_version(db, version, location)
+
+        await audit_service.log(
+            db=db,
+            action="auto_publish",
+            entity_type="file_version",
+            entity_id=version.id,
+            actor=version.uploaded_by,
+            request=request,
+            details={
+                "location_slug": location.slug,
+                "approval_required": False,
+            },
+        )
 
     async def approve_version(
         self,

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, ANY
 from uuid import uuid4
 
 import httpx
@@ -150,8 +150,13 @@ async def test_web_risk_failure_does_not_create_version(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_clear_url_creates_pending_version(monkeypatch):
-    apply_governance = AsyncMock()
+@pytest.mark.parametrize("final_status", ["pending", "approved"])
+async def test_clear_url_returns_submission_outcome(monkeypatch, final_status):
+
+    async def apply_policy(db, version, *, request=None):
+        version.status = final_status
+
+    apply_governance = AsyncMock(side_effect=apply_policy)
     monkeypatch.setattr(
         upload.approval_service,
         "apply_submission_governance",
@@ -211,9 +216,13 @@ async def test_clear_url_creates_pending_version(monkeypatch):
     assert body["link_url"] == url
     assert body["link_mode"] == "redirect"
     assert body["version_number"] == 3
-    assert body["status"] == "pending"
+    assert body["status"] == final_status
 
-    apply_governance.assert_awaited_once_with(db, version)
+    apply_governance.assert_awaited_once_with(
+        db,
+        version,
+        request=ANY,
+    )
 
     web_risk.is_flagged.assert_awaited_once_with(url)
     create_version.assert_awaited_once_with(
@@ -223,11 +232,16 @@ async def test_clear_url_creates_pending_version(monkeypatch):
         uploaded_by=admin.email,
     )
 
-    audit_log.assert_awaited_once()
-    audit_arguments = audit_log.await_args.kwargs
-    assert audit_arguments["entity_id"] == version.id
-    assert audit_arguments["actor"] == admin.email
-    assert audit_arguments["action"] == "create_link"
+    calls = audit_log.await_args_list
+    expected_actions = ["create_link"]
+
+    assert audit_log.await_count == len(expected_actions)
+    assert [call.kwargs["action"] for call in calls] == expected_actions
+
+    for call in calls:
+        assert call.kwargs["entity_id"] == version.id
+        assert call.kwargs["entity_type"] == "file_version"
+        assert call.kwargs["actor"] == admin.email
 
 
 @pytest.mark.asyncio

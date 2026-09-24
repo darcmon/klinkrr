@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.models.audit_log import AuditLog
 from backend.models.file_version import FileVersion
 from backend.models.location import Location
 from backend.services.approval_service import ApprovalService
@@ -47,12 +48,28 @@ async def test_submission_governance(approval_required, kind):
         assert location.current_approved_version_id == previous_version_id
         assert db.info == {}
         db.flush.assert_not_awaited()
+        db.add.assert_not_called()
     else:
         assert version.status == "approved"
         assert location.current_approved_version_id == version.id
         assert location.updated_at is not None
         assert db.info["cache_invalidation_slugs"] == {"documents"}
-        db.flush.assert_awaited_once()
+        db.add.assert_called_once()
+        call = db.add.call_args
+        assert call is not None
+
+        entry = call.args[0]
+        assert isinstance(entry, AuditLog)
+        assert entry.action == "auto_publish"
+        assert entry.entity_type == "file_version"
+        assert entry.entity_id == version.id
+        assert entry.actor == version.uploaded_by
+        assert entry.details == {
+            "location_slug": location.slug,
+            "approval_required": False,
+        }
+
+        db.flush.assert_awaited()
 
     assert version.reviewed_by is None
     assert version.reviewed_at is None
