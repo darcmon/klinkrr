@@ -14,6 +14,7 @@ from backend.dependencies import (
     get_current_membership,
     require_permission,
 )
+from backend.models.location import Location
 from backend.permissions import has_permission, permissions_for
 from backend.routers import archive, auth, locations
 
@@ -77,8 +78,12 @@ async def test_only_managers_create_locations_that_skip_approval(role, status):
     db = db_returning(None)
 
     async def flush():
-        location = db.add.call_args.args[0]
-        location.id = uuid4()
+        location = next(
+            call.args[0]
+            for call in db.add.call_args_list
+            if isinstance(call.args[0], Location)
+        )
+        location.id = location.id or uuid4()
         location.created_at = location.updated_at = datetime.now(timezone.utc)
 
     db.flush.side_effect = flush

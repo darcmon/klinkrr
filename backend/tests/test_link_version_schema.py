@@ -7,7 +7,7 @@ from backend.schemas.file_version import LinkVersionCreate
 def test_accepts_trims_and_preserves_url_with_default_mode():
     url = "HTTPS://Example.COM:443/a%2Fb?next=%2Ffoo&x=1#section"
     link = LinkVersionCreate(link_url=f"  {url}  ")
-    assert link.model_dump() == {"link_url": url, "link_mode": "redirect"}
+    assert link.model_dump() == {"id": None, "link_url": url, "link_mode": "redirect"}
 
 
 def test_accepts_explicit_redirect_mode():

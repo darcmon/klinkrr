@@ -1,4 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from uuid import UUID
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
@@ -8,7 +19,10 @@ from backend.dependencies import (
     get_web_risk_client,
     require_permission,
 )
+from backend.errors import api_error
 from backend.models.admin_user import AdminUser
+from backend.models.file_version import FileVersion
+from backend.models.location import Location
 from backend.models.organization import Membership
 from backend.schemas.file_version import (
     FileVersionUploadResponse,
@@ -16,12 +30,51 @@ from backend.schemas.file_version import (
     LinkVersionCreateResponse,
 )
 from backend.services.file_service import file_service
-from backend.services.approval_service import approval_service
+from backend.services.approval_service import VersionIdExists, approval_service
 from backend.services.audit_service import audit_service
 from backend.services.scoping import get_location
 from backend.services.web_risk_client import WebRiskClient, WebRiskError
 
 router = APIRouter(prefix="/admin", tags=["upload"])
+
+
+def _replay(
+    existing: FileVersion,
+    location: Location,
+    admin: AdminUser,
+    response: Response,
+    *,
+    filename: str | None = None,
+    link_url: str | None = None,
+) -> FileVersion:
+    """A version with the client's id already exists. The same submission
+    arriving again (a retry after a lost response) gets the original result
+    with 200; anything else is a conflict."""
+    kind = "link" if link_url is not None else "file"
+    same_submission = (
+        existing.location_id == location.id
+        and existing.uploaded_by_id == admin.id
+        and existing.deleted_at is None
+        and existing.kind == kind
+        and (
+            existing.link_url == link_url
+            if kind == "link"
+            else existing.original_filename == filename
+        )
+    )
+    if not same_submission:
+        raise api_error(
+            409,
+            "version_id_conflict",
+            "This submission id was already used for different content.",
+        )
+    if existing.status not in ("pending", "approved"):
+        raise api_error(
+            409, "version_id_conflict", "This submission has already been processed."
+        )
+
+    response.status_code = 200
+    return existing
 
 
 @router.post(
@@ -32,7 +85,10 @@ router = APIRouter(prefix="/admin", tags=["upload"])
 async def upload_file(
     slug: str,
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
+    # Optional client-generated id; resending it makes a retry safe.
+    id: UUID | None = Form(None),
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
     membership: Membership = Depends(require_permission("submit")),
@@ -50,6 +106,11 @@ async def upload_file(
 
     if not filename:
         raise HTTPException(status_code=400, detail="Filename is required")
+
+    # A retry: answer before reading the file or touching S3.
+    if id is not None and (existing := await db.get(FileVersion, id)):
+        version = _replay(existing, location, admin, response, filename=filename)
+        return FileVersionUploadResponse.from_version(version, location_slug=slug)
 
     if content_type is None or content_type not in settings.allowed_file_types_list:
         raise HTTPException(
@@ -76,16 +137,22 @@ async def upload_file(
     await file_service.upload_file(s3_key, file_data, content_type)
 
     # 5. Create pending version in DB
-    version = await approval_service.create_pending_version(
-        db=db,
-        location_id=location.id,
-        original_filename=filename,
-        content_type=content_type,
-        file_size_bytes=file_size,
-        s3_key=s3_key,
-        uploaded_by=admin.email,
-        uploaded_by_id=admin.id,
-    )
+    try:
+        version = await approval_service.create_pending_version(
+            db=db,
+            location_id=location.id,
+            original_filename=filename,
+            content_type=content_type,
+            file_size_bytes=file_size,
+            s3_key=s3_key,
+            uploaded_by=admin.email,
+            uploaded_by_id=admin.id,
+            version_id=id,
+        )
+    except VersionIdExists as e:
+        # A concurrent retry won the race; the object stored above is unused.
+        version = _replay(e.existing, location, admin, response, filename=filename)
+        return FileVersionUploadResponse.from_version(version, location_slug=slug)
 
     await approval_service.apply_submission_governance(db, version, request=request)
 
@@ -119,6 +186,7 @@ async def create_link(
     slug: str,
     payload: LinkVersionCreate,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
     membership: Membership = Depends(require_permission("submit")),
@@ -127,6 +195,11 @@ async def create_link(
     location = await get_location(db, membership.organization_id, slug)
     if location is None:
         raise HTTPException(status_code=404, detail="Location not found")
+
+    # A retry: answer before calling the safety check.
+    if payload.id is not None and (existing := await db.get(FileVersion, payload.id)):
+        version = _replay(existing, location, admin, response, link_url=payload.link_url)
+        return LinkVersionCreateResponse.from_version(version, location_slug=slug)
 
     try:
         flagged = await web_risk.is_flagged(payload.link_url)
@@ -142,13 +215,18 @@ async def create_link(
             detail="URL was flagged by the safety check",
         )
 
-    version = await approval_service.create_pending_link_version(
-        db=db,
-        location_id=location.id,
-        link_url=payload.link_url,
-        uploaded_by=admin.email,
-        uploaded_by_id=admin.id,
-    )
+    try:
+        version = await approval_service.create_pending_link_version(
+            db=db,
+            location_id=location.id,
+            link_url=payload.link_url,
+            uploaded_by=admin.email,
+            uploaded_by_id=admin.id,
+            version_id=payload.id,
+        )
+    except VersionIdExists as e:
+        version = _replay(e.existing, location, admin, response, link_url=payload.link_url)
+        return LinkVersionCreateResponse.from_version(version, location_slug=slug)
 
     await approval_service.apply_submission_governance(db, version, request=request)
 

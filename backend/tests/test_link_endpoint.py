@@ -252,6 +252,7 @@ async def test_clear_url_returns_submission_outcome(monkeypatch, final_status):
         link_url=url,
         uploaded_by=admin.email,
         uploaded_by_id=admin.id,
+        version_id=None,
     )
 
     calls = audit_log.await_args_list

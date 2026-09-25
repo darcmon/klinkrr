@@ -22,6 +22,7 @@ function handleLogout() {
     </router-link>
 
     <nav class="header-nav" aria-label="Main navigation">
+      <router-link to="/upload">Upload</router-link>
       <router-link to="/dashboard">Dashboard</router-link>
       <router-link
         to="/locations"
@@ -36,7 +37,6 @@ function handleLogout() {
       >
         Locations
       </router-link>
-      <router-link to="/upload">Upload</router-link>
       <router-link to="/settings">Settings</router-link>
     </nav>
 

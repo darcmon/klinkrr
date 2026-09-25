@@ -45,8 +45,24 @@ def test_update_preserves_explicit_governance_choice(required):
     }
 
 
-@pytest.mark.parametrize("schema", [LocationCreate, LocationUpdate])
-@pytest.mark.parametrize("invalid", [None, "false", "true", 0, 1])
+def test_update_null_governance_means_unchanged():
+    # The route drops it; it must never be read as "turn approval off".
+    body = LocationUpdate.model_validate({"approval_required": None})
+
+    assert body.approval_required is None
+
+
+@pytest.mark.parametrize(
+    ("schema", "invalid"),
+    [
+        (LocationCreate, None),
+        *[
+            (schema, invalid)
+            for schema in (LocationCreate, LocationUpdate)
+            for invalid in ("false", "true", 0, 1)
+        ],
+    ],
+)
 def test_governance_rejects_non_boolean_values(schema, invalid):
     payload = {"approval_required": invalid}
 

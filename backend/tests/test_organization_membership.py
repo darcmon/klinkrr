@@ -188,8 +188,12 @@ async def test_create_location_records_organization_creator_and_policy(
     db.execute.return_value = existing
 
     async def flush():
-        location = db.add.call_args.args[0]
-        location.id = uuid4()
+        location = next(
+            call.args[0]
+            for call in db.add.call_args_list
+            if isinstance(call.args[0], Location)
+        )
+        location.id = location.id or uuid4()
         location.created_at = location.updated_at = "2026-09-23T00:00:00+00:00"
 
     db.flush.side_effect = flush
@@ -214,8 +218,11 @@ async def test_create_location_records_organization_creator_and_policy(
     assert response.status_code == 201
     assert response.json()["approval_required"] is approval_required
 
-    location = db.add.call_args.args[0]
-    assert isinstance(location, Location)
+    [location] = [
+        call.args[0]
+        for call in db.add.call_args_list
+        if isinstance(call.args[0], Location)
+    ]
     assert location.organization_id == membership.organization_id
     assert location.created_by_id == admin.id
     assert location.required_approvals == expected

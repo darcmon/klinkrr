@@ -11,6 +11,8 @@ from backend.services.url_validator import validate_link_url
 class LinkVersionCreate(BaseModel):
     """Validated input for creating a redirect link version."""
 
+    # Optional client-generated id that makes retries safe; see the upload route.
+    id: uuid.UUID | None = None
     link_url: str
     link_mode: Literal["redirect"] = "redirect"
 

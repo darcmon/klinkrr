@@ -106,6 +106,7 @@ async def test_upload_returns_submission_outcome(monkeypatch, final_status):
         s3_key=s3_key,
         uploaded_by=admin.email,
         uploaded_by_id=admin.id,
+        version_id=None,
     )
     apply_governance.assert_awaited_once_with(
         db,

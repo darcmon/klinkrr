@@ -210,6 +210,11 @@ onMounted(loadLocations);
             >
               Open published version ↗
             </a>
+            <router-link
+              :to="{ name: 'upload', query: { location: loc.slug } }"
+            >
+              Submit a klink →
+            </router-link>
             <router-link :to="{ name: 'archive', params: { slug: loc.slug } }">
               Archive →
             </router-link>
@@ -270,6 +275,12 @@ onMounted(loadLocations);
                   >
                     Open published version ↗
                   </a>
+
+                  <router-link
+                    :to="{ name: 'upload', query: { location: loc.slug } }"
+                  >
+                    Submit a klink →
+                  </router-link>
 
                   <router-link
                     :to="{ name: 'archive', params: { slug: loc.slug } }"

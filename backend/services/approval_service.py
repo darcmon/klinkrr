@@ -20,6 +20,15 @@ class ReviewNotAllowed(Exception):
     """The reviewer may not approve or reject this particular version."""
 
 
+class VersionIdExists(Exception):
+    """A client-supplied version id is already used. Checked while holding the
+    location lock, so concurrent retries with the same id can't both insert."""
+
+    def __init__(self, existing: FileVersion):
+        super().__init__("Version id already exists")
+        self.existing = existing
+
+
 @dataclass(frozen=True)
 class ReviewRights:
     can_approve: bool
@@ -240,6 +249,16 @@ class ApprovalService:
         result = await db.execute(query)
         return [(version, location) for version, location in result.all()]
 
+    async def _ensure_new_version_id(
+        self, db: AsyncSession, version_id: UUID | None
+    ) -> None:
+        """Call while holding the location lock (after get_next_version_number)."""
+        if version_id is None:
+            return
+        existing = await db.get(FileVersion, version_id)
+        if existing is not None:
+            raise VersionIdExists(existing)
+
     async def get_next_version_number(
         self,
         db: AsyncSession,
@@ -267,9 +286,12 @@ class ApprovalService:
         s3_key: str,
         uploaded_by: str,
         uploaded_by_id: UUID,
+        version_id: UUID | None = None,
     ) -> FileVersion:
         version_number = await self.get_next_version_number(db, location_id)
+        await self._ensure_new_version_id(db, version_id)
         version = FileVersion(
+            **({"id": version_id} if version_id else {}),
             location_id=location_id,
             original_filename=original_filename,
             content_type=content_type,
@@ -291,10 +313,13 @@ class ApprovalService:
         link_url: str,
         uploaded_by: str,
         uploaded_by_id: UUID,
+        version_id: UUID | None = None,
     ) -> FileVersion:
         version_number = await self.get_next_version_number(db, location_id)
+        await self._ensure_new_version_id(db, version_id)
 
         version = FileVersion(
+            **({"id": version_id} if version_id else {}),
             location_id=location_id,
             kind="link",
             link_url=link_url,
