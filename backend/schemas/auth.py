@@ -32,6 +32,7 @@ class AdminUserResponse(BaseModel):
     id: uuid.UUID
     email: str
     display_name: str
+    avatar_url: str | None = None
     organization: OrganizationSummary | None
     role: str | None
     permissions: list[str]

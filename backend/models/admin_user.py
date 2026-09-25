@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean
+from sqlalchemy import String, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 
@@ -26,6 +26,7 @@ class AdminUser(Base):
     )
 
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime.utcnow

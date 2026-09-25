@@ -192,6 +192,7 @@ async def test_me_returns_organization_role_and_permissions(monkeypatch):
         password_hash="hash",
         microsoft_sub=None,
         google_sub="google-sub",
+        avatar_url="https://example.com/avatar.jpg",
     )
     member = membership("approver", allow_self_approval=False)
     monkeypatch.setattr(auth, "load_membership", AsyncMock(return_value=member))
@@ -199,6 +200,7 @@ async def test_me_returns_organization_role_and_permissions(monkeypatch):
     async with client_for(auth.router, MagicMock(), admin, member) as client:
         body = (await client.get("/admin/me")).json()
 
+    assert body["avatar_url"] == admin.avatar_url
     assert body["id"] == str(admin.id)
     assert body["role"] == "approver"
     assert body["organization"] == {
@@ -218,6 +220,7 @@ async def test_me_works_without_a_membership(monkeypatch):
         display_name="A",
         password_hash=None,
         microsoft_sub="ms-sub",
+        avatar_url=None,
         google_sub=None,
     )
     monkeypatch.setattr(auth, "load_membership", AsyncMock(return_value=None))
@@ -226,6 +229,7 @@ async def test_me_works_without_a_membership(monkeypatch):
         response = await client.get("/admin/me")
 
     assert response.status_code == 200
+    assert response.json()["avatar_url"] is None
     assert response.json()["organization"] is None
     assert response.json()["role"] is None
     assert response.json()["permissions"] == []

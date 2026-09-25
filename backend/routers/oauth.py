@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from backend.services.profile_picture import get_profile_picture
+
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -25,7 +27,7 @@ oauth.register(
     client_secret=settings.microsoft_client_secret,
     server_metadata_url="https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
     client_kwargs={
-        "scope": "openid email profile",
+        "scope": "openid email profile User.Read",
         "token_endpoint_auth_method": "client_secret_post",
     },
 )
@@ -113,6 +115,7 @@ async def _handle_callback(provider: str, request: Request, db: AsyncSession):
     if not user:
         return RedirectResponse(f"{settings.frontend_url}/login?error=unauthorized")
 
+    user.avatar_url = await get_profile_picture(provider, info, token)
     user.last_login_at = datetime.now(timezone.utc)
     await db.flush()
 

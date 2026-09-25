@@ -17,6 +17,7 @@ watch(token, () => {
 
 function fetchUser(): Promise<CurrentUser | null> {
   const requestedWith = token.value;
+  if (!requestedWith) return Promise.resolve(null);
   const request = (async () => {
     const data: CurrentUser | undefined = await api.get('/admin/me');
     // Ignore a response for a token that has since changed.

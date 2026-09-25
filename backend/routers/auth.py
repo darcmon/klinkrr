@@ -65,6 +65,7 @@ async def _me_response(db: AsyncSession, admin: AdminUser) -> AdminUserResponse:
         id=admin.id,
         email=admin.email,
         display_name=admin.display_name,
+        avatar_url=admin.avatar_url,
         organization=(
             OrganizationSummary.model_validate(membership.organization)
             if membership

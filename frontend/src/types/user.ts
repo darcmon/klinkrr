@@ -21,6 +21,7 @@ export interface CurrentUser {
   id: string;
   email: string;
   display_name: string;
+  avatar_url: string | null;
   organization: OrganizationSummary | null;
   role: Role | null;
   permissions: Permission[];
