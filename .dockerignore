@@ -1,0 +1,19 @@
+# Keep secrets, local data and anything not needed to run the API out of the image.
+.git
+.venv
+.env
+.env.*
+!.env.example
+secrets
+backend/secrets
+backend/tests
+frontend
+**/__pycache__
+**/*.pyc
+*.egg-info
+.pytest_cache
+.history
+.DS_Store
+*.pdf
+Dockerfile
+docker-compose.yml

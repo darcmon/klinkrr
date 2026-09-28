@@ -99,7 +99,7 @@ async def _handle_callback(provider: str, request: Request, db: AsyncSession):
         claims_options={"iss": {"essential": False}},
     )
     info = token.get("userinfo")
-    logger.info(f"[{provider}] Userinfo received: {info}")
+    # Don't log `info`: it holds the user's name, email and provider ids.
 
     if not info or not info.get("email") or not info.get("sub"):
         return RedirectResponse(f"{settings.frontend_url}/login?error=provider")

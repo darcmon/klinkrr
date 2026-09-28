@@ -8,6 +8,7 @@ from backend.models.location import Location
 from backend.models.file_version import FileVersion
 from backend.services.file_service import file_service
 from backend.services.audit_service import audit_service
+from backend.services.content_disposition import content_disposition
 from backend.services.cache_service import cache_service
 
 router = APIRouter(tags=["public"])
@@ -83,7 +84,7 @@ async def serve_file(
         file_service.stream_file(cached.s3_key),
         media_type=cached.content_type,
         headers={
-            "Content-Disposition": f'inline; filename="{cached.original_filename}"',
+            "Content-Disposition": content_disposition("inline", cached.original_filename),
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-cache, must-revalidate",
         },

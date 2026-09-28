@@ -25,6 +25,14 @@ class CachedVersion:
 
 
 class CacheService:
+    """In-memory, per-process cache of what each public slug serves.
+
+    Invalidation only reaches the process that approved the version, so with
+    several API processes the others serve the old version until the TTL
+    expires. Run a single API process (the Dockerfile does) until this moves
+    to a shared store such as Redis.
+    """
+
     def __init__(self):
         self._cache: dict[str, CachedVersion] = {}
         self._ttl = get_settings().cache_ttl_seconds

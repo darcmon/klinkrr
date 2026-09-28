@@ -39,9 +39,23 @@ async def lifespan(app: FastAPI):
         from sqlalchemy import select
 
         result = await db.execute(select(AdminUser).limit(1))
-        if not result.scalar_one_or_none():
+        has_users = result.scalar_one_or_none() is not None
+        can_seed = bool(settings.admin_email and settings.admin_password)
+
+        if has_users and settings.is_production and settings.admin_password:
+            logger.warning(
+                "ADMIN_PASSWORD is still set. It's only used to create the first "
+                "admin; remove it from the environment."
+            )
+        elif not has_users and not can_seed:
+            logger.warning(
+                "No users exist. Set ADMIN_EMAIL and ADMIN_PASSWORD for the first "
+                "boot to create an owner."
+            )
+
+        if not has_users and can_seed:
             admin = AdminUser(
-                email=settings.admin_email,
+                email=settings.admin_email.strip().lower(),
                 password_hash=hash_password(settings.admin_password),
                 display_name="Admin",
             )
@@ -65,7 +79,7 @@ async def lifespan(app: FastAPI):
                 )
             )
             await db.commit()
-            logger.info(f"Seeded admin user: {settings.admin_email}")
+            logger.info(f"Seeded admin user: {admin.email}")
     yield
 
     await engine.dispose()
@@ -74,13 +88,27 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
+    if settings.is_production:
+        problems = settings.production_problems()
+        if problems:
+            raise RuntimeError(
+                "Refusing to start with unsafe production settings:\n- "
+                + "\n- ".join(problems)
+            )
     app = FastAPI(title="klinkrr", version="0.1.0", lifespan=lifespan)
 
     @app.get("/health")
     async def health_check():
         return {"status": "ok"}
 
-    app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+    # Only used for the OAuth state during sign-in.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        https_only=settings.is_production,
+        same_site="lax",
+    )
     app.add_middleware(SecurityHeaderMiddleware)
     app.add_middleware(
         CORSMiddleware,

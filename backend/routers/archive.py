@@ -12,6 +12,7 @@ from backend.models.admin_user import AdminUser
 from backend.models.organization import Membership
 from backend.permissions import has_permission
 from backend.services import scoping
+from backend.services.content_disposition import content_disposition
 from backend.schemas.file_version import VersionArchiveResponse, FileVersionResponse
 from backend.services.approval_service import approval_service
 from backend.services.file_service import file_service
@@ -68,7 +69,9 @@ async def download_version(
         file_service.stream_file(version.s3_key),
         media_type=version.content_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{version.original_filename}"',
+            "Content-Disposition": content_disposition(
+                "attachment", version.original_filename
+            ),
         },
     )
 

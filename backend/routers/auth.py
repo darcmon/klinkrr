@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.session import get_db
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/admin", tags=["auth"])
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(AdminUser).where(
-            AdminUser.email == body.email,
+            func.lower(AdminUser.email) == body.email.strip().lower(),
             AdminUser.is_active.is_(True),
         )
     )

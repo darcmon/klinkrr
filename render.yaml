@@ -1,0 +1,122 @@
+# Render Blueprint: API, admin app, audit prune job and Postgres.
+# See DEPLOY.md for the constraints behind these settings and the first-deploy
+# steps. Values marked `sync: false` are entered in the Render dashboard when
+# the Blueprint is first applied; they're never stored in this file.
+
+services:
+  # API. Also serves the public links at /<slug>.
+  - type: web
+    name: klinkrr-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: ohio
+    # Smallest paid instance: free instances sleep (slow first QR scans) and
+    # can't run a pre-deploy command.
+    plan: starter
+    # Exactly one: the public-link cache is per process. Don't autoscale.
+    numInstances: 1
+    healthCheckPath: /health
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: klinkrr-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Cloudflare R2 (S3-compatible)
+      - key: S3_ENDPOINT_URL
+        sync: false # https://<account id>.r2.cloudflarestorage.com
+      - key: S3_BUCKET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: auto
+
+      # The admin app's https origin, e.g. https://app.klinkrr.com
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_TENANT
+        value: common
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_SELF_SERVE_ENABLED
+        value: "false"
+
+      - key: WEB_RISK_API_KEY
+        sync: false
+
+      # First boot only: creates the first owner. Delete both afterwards.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+
+  # Admin app (static Vue build, served from Render's CDN).
+  - type: web
+    name: klinkrr-admin
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      # Build-time: the API's public https URL, e.g. https://go.klinkrr.com.
+      # Changing it needs a rebuild of this site.
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # Single-page app: let the Vue router handle every path.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+
+  # Deletes public "access" audit events older than AUDIT_ACCESS_RETENTION_DAYS.
+  - type: cron
+    name: klinkrr-prune-audit
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: ohio
+    plan: starter
+    schedule: "0 8 * * *" # daily, 08:00 UTC (early morning US East)
+    dockerCommand: python -m backend.scripts.prune_audit_logs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: klinkrr-db
+          property: connectionString
+
+databases:
+  - name: klinkrr-db
+    region: ohio
+    plan: basic-256mb
+    databaseName: klinkrr
+    user: klinkrr
+    postgresMajorVersion: "16"
+    # No outside connections: only services in this Render account.
+    ipAllowList: []
