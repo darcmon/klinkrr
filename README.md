@@ -2,6 +2,8 @@
 
 Permanent, human-readable links to files and redirects that you can update without changing the URL. Admins submit a new version of a location such as `/employee-handbook`, it's approved (or published immediately, depending on the location's setting), and the same link serves the new content.
 
+This README describes the current app. See [architecture direction](docs/architecture.md) for agreed plans around organization and personal namespaces, multi-organization permissions, and integrations.
+
 ## Prerequisites
 
 - Python 3.11+
