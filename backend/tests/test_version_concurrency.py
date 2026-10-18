@@ -26,7 +26,11 @@ async def version_database():
     try:
         async with engine.begin() as connection:
             await connection.execute(
-                insert(Organization).values(id=organization_id, name="Concurrency test")
+                insert(Organization).values(
+                    id=organization_id,
+                    name="Concurrency test",
+                    slug=f"concurrency-{organization_id}",
+                )
             )
             await connection.execute(
                 insert(AdminUser).values(

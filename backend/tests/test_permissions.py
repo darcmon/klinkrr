@@ -24,7 +24,10 @@ def membership(role, *, organization_id=None, allow_self_approval=True):
         role=role,
         organization_id=organization_id or uuid4(),
         organization=SimpleNamespace(
-            id=uuid4(), name="Acme", allow_self_approval=allow_self_approval
+            id=uuid4(),
+            name="Acme",
+            slug="acme",
+            allow_self_approval=allow_self_approval,
         ),
     )
 
@@ -206,6 +209,7 @@ async def test_me_returns_organization_role_and_permissions(monkeypatch):
     assert body["organization"] == {
         "id": str(member.organization.id),
         "name": "Acme",
+        "slug": "acme",
         "allow_self_approval": False,
     }
     assert body["permissions"] == permissions_for("approver")

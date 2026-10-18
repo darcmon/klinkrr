@@ -17,6 +17,7 @@ class TokenResponse(BaseModel):
 class OrganizationSummary(BaseModel):
     id: uuid.UUID
     name: str
+    slug: str
     allow_self_approval: bool
 
     model_config = {"from_attributes": True}

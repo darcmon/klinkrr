@@ -31,7 +31,9 @@ async def test_database_enforces_version_payloads():
             organization_id = uuid.uuid4()
             user_id = uuid.uuid4()
             await connection.execute(insert(Organization).values(
-                id=organization_id, name="Test"
+                id=organization_id,
+                name="Test",
+                slug=f"test-{organization_id}",
             ))
             await connection.execute(insert(AdminUser).values(
                 id=user_id, email=f"{user_id}@example.com", display_name="Test"
@@ -99,7 +101,9 @@ async def test_database_enforces_organization_and_identity_constraints():
             user_id = uuid.uuid4()
             location_id = uuid.uuid4()
             await connection.execute(insert(Organization).values(
-                id=organization_id, name="Test"
+                id=organization_id,
+                name="Test",
+                slug=f"test-{organization_id}",
             ))
             await connection.execute(insert(AdminUser).values(
                 id=user_id, email=f"{user_id}@example.com", display_name="Test"
@@ -190,7 +194,9 @@ async def test_admin_lookups_are_scoped_to_the_organization():
             slugs, versions = {}, {}
             for organization_id in (ours, theirs):
                 await connection.execute(insert(Organization).values(
-                    id=organization_id, name="Test"
+                    id=organization_id,
+                    name="Test",
+                    slug=f"test-{organization_id}",
                 ))
                 location_id = uuid.uuid4()
                 slugs[organization_id] = f"scoped-{location_id}"

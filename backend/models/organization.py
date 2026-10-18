@@ -20,6 +20,13 @@ class Organization(Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    # Public URL identity. Renaming the organization does not change this.
+    slug: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=False,
+    )
+
     # When true, a person may approve a version they uploaded. The approval is
     # still recorded as self-approved in the audit log.
     allow_self_approval: Mapped[bool] = mapped_column(

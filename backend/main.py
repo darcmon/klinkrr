@@ -67,7 +67,9 @@ async def lifespan(app: FastAPI):
                 await db.execute(select(Organization).limit(1))
             ).scalar_one_or_none()
             if organization is None:
-                organization = Organization(name="Default organization")
+                organization = Organization(
+                    name="Default organization", slug="default-organization"
+                )
                 db.add(organization)
 
             await db.flush()

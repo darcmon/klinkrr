@@ -9,6 +9,7 @@ export type Permission =
 export interface OrganizationSummary {
   id: string;
   name: string;
+  slug: string;
   allow_self_approval: boolean;
 }
 
@@ -39,7 +40,11 @@ export interface Member {
 }
 
 // Lowest to highest; each role includes everything above it in this list.
-export const ROLE_OPTIONS: { value: Role; label: string; description: string }[] = [
+export const ROLE_OPTIONS: {
+  value: Role;
+  label: string;
+  description: string;
+}[] = [
   {
     value: 'uploader',
     label: 'Uploader',
