@@ -17,6 +17,12 @@ class Location(Base):
 
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
 
+    # Existing short URLs remain permanently attached to their original location.
+    # New namespaced locations will not need a legacy address.
+    legacy_slug: Mapped[str | None] = mapped_column(
+        String(100), unique=True, nullable=True
+    )
+
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 

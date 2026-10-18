@@ -11,6 +11,7 @@ secrets/
 .DS_Store
 
 *.pdf
+visualizations/
 architecture.md
 DEPLOY.md
 AGENTS.md

@@ -105,7 +105,8 @@ async def test_database_enforces_organization_and_identity_constraints():
                 id=user_id, email=f"{user_id}@example.com", display_name="Test"
             ))
             await connection.execute(insert(Location).values(
-                id=location_id, slug=str(location_id), display_name="Test",
+                id=location_id, slug=str(location_id), legacy_slug=str(location_id),
+                display_name="Test",
                 organization_id=organization_id,
             ))
             assert await connection.scalar(
@@ -135,6 +136,11 @@ async def test_database_enforces_organization_and_identity_constraints():
                 insert(Location).values(
                     id=uuid.uuid4(), slug=str(uuid.uuid4()), display_name="Negative",
                     organization_id=organization_id, required_approvals=-1,
+                ),
+                insert(Location).values(
+                    id=uuid.uuid4(), slug=str(uuid.uuid4()),
+                    legacy_slug=str(location_id), display_name="Reused legacy URL",
+                    organization_id=organization_id,
                 ),
                 insert(FileVersion).values(
                     location_id=location_id, uploaded_by="test", version_number=1, **link

@@ -12,6 +12,8 @@ This README describes the current app. See [architecture direction](docs/archite
 
 ## Setup
 
+Once you've done the one-time setup below, `make up` starts the database/storage and `make dev` runs backend + frontend together in one terminal (Ctrl-C stops both). Run `make install` after cloning to create the venv and install frontend deps.
+
 ### 1. Environment
 
 ```bash
