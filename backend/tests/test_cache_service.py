@@ -24,3 +24,25 @@ def test_invalidation_prevents_early_read_refilling_cache():
     )
 
     assert cache.get(slug) is None
+
+
+def test_invalidation_clears_legacy_and_namespaced_keys():
+    cache = CacheService()
+    version_id = uuid4()
+
+    for key in ("handbook", "organomic/handbook"):
+        cache.set(
+            slug=key,
+            version_id=version_id,
+            s3_key=None,
+            content_type=None,
+            original_filename=None,
+            kind="link",
+            link_url="https://example.com",
+            link_mode="redirect",
+        )
+
+    cache.invalidate("handbook")
+
+    assert cache.get("handbook") is None
+    assert cache.get("organomic/handbook") is None

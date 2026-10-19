@@ -147,6 +147,9 @@ async def create_location(
     location = Location(
         id=body.id or uuid.uuid4(),
         slug=body.slug,
+        # ponytail: Keep assigning legacy URLs until namespaced creation ships;
+        # then new locations should leave this null.
+        legacy_slug=body.slug,
         display_name=body.display_name,
         description=body.description,
         reminder_email=body.reminder_email,

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from sqlalchemy import (
     String,
@@ -30,9 +31,9 @@ class FileVersion(Base):
 
     # -- File metadata --
 
-    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="file", server_default="file")
+    kind: Mapped[Literal["file", "link"]] = mapped_column(String(20), nullable=False, default="file", server_default="file")
     link_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    link_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    link_mode: Mapped[Literal["redirect"] | None] = mapped_column(String(20), nullable=True)
     original_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

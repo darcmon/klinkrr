@@ -225,6 +225,7 @@ async def test_create_location_records_organization_creator_and_policy(
     ]
     assert location.organization_id == membership.organization_id
     assert location.created_by_id == admin.id
+    assert location.legacy_slug == "dock-a"
     assert location.required_approvals == expected
 
 

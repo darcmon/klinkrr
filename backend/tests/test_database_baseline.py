@@ -19,6 +19,68 @@ from backend.models import (
 
 
 @pytest.mark.asyncio
+async def test_public_addresses_resolve_the_original_owner(monkeypatch):
+    import httpx
+    from fastapi import FastAPI
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from backend.db.session import get_db
+    from backend.routers import public
+
+    url = os.environ.get("PHASE1_TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("Requires a migrated disposable PostgreSQL database")
+
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            db = AsyncSession(bind=connection, join_transaction_mode="create_savepoint")
+            organization_id, location_id = uuid.uuid4(), uuid.uuid4()
+            org_slug, slug = f"org-{organization_id}", f"loc-{location_id}"
+            legacy = f"old-{location_id}"
+            await connection.execute(insert(Organization).values(
+                id=organization_id, name="Original owner", slug=org_slug,
+            ))
+            await connection.execute(insert(Location).values(
+                id=location_id, organization_id=organization_id,
+                slug=slug, legacy_slug=legacy, display_name="Test",
+            ))
+
+            # Exercise real SQL resolution, independent of file storage and auditing.
+            found = []
+
+            # Capture the query result before serving; no published version is
+            # needed to verify address ownership and deleted-location filtering.
+            async def resolve(cache_key, query, request, session):
+                location = (await session.execute(query)).scalar_one_or_none()
+                found.append(location.id if location else None)
+                return {"found": location is not None}
+
+            monkeypatch.setattr(public, "_serve_location", resolve)
+            app = FastAPI()
+            app.include_router(public.router)
+            app.dependency_overrides[get_db] = lambda: db
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://test",
+            ) as client:
+                for path in (f"/{org_slug}/{slug}", f"/{legacy}",
+                             f"/wrong-owner/{slug}", f"/{slug}"):
+                    await client.get(path)
+                assert found == [location_id, location_id, None, None]
+                await connection.execute(Location.__table__.update().where(
+                    Location.id == location_id
+                ).values(deleted_at=datetime.now(timezone.utc)))
+                await client.get(f"/{org_slug}/{slug}")
+                await client.get(f"/{legacy}")
+                assert found[-2:] == [None, None]
+            await db.close()
+            await transaction.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_database_enforces_version_payloads():
     url = os.environ.get("PHASE1_TEST_DATABASE_URL")
     if not url:

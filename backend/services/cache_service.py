@@ -83,5 +83,15 @@ class CacheService:
         self._generation += 1
         self._cache.pop(slug, None)
 
+        # ponytail: This scans the small in-process cache. Index keys by location
+        # id when the cache becomes shared or the number of locations grows.
+        namespaced_suffix = f"/{slug}"
+        namespaced_keys = [
+            key for key in self._cache if key.endswith(namespaced_suffix)
+        ]
+
+        for key in namespaced_keys:
+            del self._cache[key]
+
 
 cache_service = CacheService()

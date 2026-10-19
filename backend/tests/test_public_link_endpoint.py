@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.dependencies import get_db
@@ -14,7 +14,40 @@ from backend.services.cache_service import CacheService
 
 
 @pytest.mark.asyncio
-async def test_approved_link_redirects_and_uses_cache(monkeypatch):
+async def test_cached_file_without_storage_key_is_unavailable(monkeypatch):
+    cache = CacheService()
+    cache._ttl = 60
+    cache.set(
+        slug="handbook",
+        version_id=uuid4(),
+        s3_key=None,
+        content_type="application/pdf",
+        original_filename="handbook.pdf",
+    )
+    monkeypatch.setattr(public, "cache_service", cache)
+    monkeypatch.setattr(public.audit_service, "log", AsyncMock())
+    stream_file = MagicMock()
+    monkeypatch.setattr(public.file_service, "stream_file", stream_file)
+
+    with pytest.raises(HTTPException) as error:
+        await public.serve_legacy_location(
+            "handbook", MagicMock(), MagicMock(spec=AsyncSession)
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "File is unavailable"
+    stream_file.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("path", "cache_key"),
+    [
+        ("/handbook", "handbook"),
+        ("/organomic/handbook", "organomic/handbook"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_approved_link_redirects_and_uses_cache(monkeypatch, path, cache_key):
     url = "https://example.com/handbook?lang=en#intro"
     version = SimpleNamespace(
         id=uuid4(),
@@ -58,7 +91,9 @@ async def test_approved_link_redirects_and_uses_cache(monkeypatch):
         base_url="http://test",
         follow_redirects=False,
     ) as client:
-        first = await client.get("/handbook")
+        first = await client.get(path)
+
+        assert cache.get(cache_key) is not None
 
         db.execute.assert_awaited_once()
         db.get.assert_awaited_once_with(FileVersion, version.id)
@@ -66,7 +101,7 @@ async def test_approved_link_redirects_and_uses_cache(monkeypatch):
         db.execute.reset_mock()
         db.get.reset_mock()
 
-        second = await client.get("/handbook")
+        second = await client.get(path)
 
     for response in (first, second):
         assert response.status_code == 302
