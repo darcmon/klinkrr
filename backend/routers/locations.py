@@ -86,7 +86,9 @@ async def list_locations(
 
     locations = list((await db.execute(query)).scalars().all())
     return LocationListResponse(
-        locations=await location_responses(db, locations),
+        locations=await location_responses(
+            db, locations, organization_slug=membership.organization.slug
+        ),
         total=total,
     )
 
@@ -114,7 +116,9 @@ async def _replay_or_conflict(
         and existing.deleted_at is None
     ):
         response.status_code = 200
-        return (await location_responses(db, [existing]))[0]
+        return (await location_responses(
+            db, [existing], organization_slug=membership.organization.slug
+        ))[0]
     raise api_error(409, "id_conflict", "This id belongs to a different location.")
 
 
@@ -184,7 +188,9 @@ async def create_location(
         details={"slug": location.slug, "approval_required": location.approval_required},
     )
 
-    return (await location_responses(db, [location]))[0]
+    return (await location_responses(
+        db, [location], organization_slug=membership.organization.slug
+    ))[0]
 
 
 # Declared before "/{slug}" so it isn't matched as a slug.
@@ -218,7 +224,9 @@ async def get_location(
     location = await scoping.get_location(db, membership.organization_id, slug)
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")
-    return (await location_responses(db, [location]))[0]
+    return (await location_responses(
+        db, [location], organization_slug=membership.organization.slug
+    ))[0]
 
 
 # Fields where `null` means "leave unchanged" rather than "clear".
@@ -290,4 +298,6 @@ async def update_location(
             },
         )
 
-    return (await location_responses(db, [location]))[0]
+    return (await location_responses(
+        db, [location], organization_slug=membership.organization.slug
+    ))[0]

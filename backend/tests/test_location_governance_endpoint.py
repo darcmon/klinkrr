@@ -63,7 +63,7 @@ async def test_governance_update_preserves_publication_and_audits_changes(
     app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
         role="owner",
         organization_id=uuid4(),
-        organization=SimpleNamespace(allow_self_approval=True),
+        organization=SimpleNamespace(allow_self_approval=True, slug="acme"),
     )
 
     async with httpx.AsyncClient(
@@ -76,6 +76,7 @@ async def test_governance_update_preserves_publication_and_audits_changes(
         )
 
     assert response.status_code == 200
+    assert response.json()["public_path"] == "/acme/documents"
     assert response.json()["approval_required"] is expected
     assert response.json()["current_approved_version_id"] == str(published_version_id)
     assert location.current_approved_version_id == published_version_id
@@ -127,7 +128,7 @@ async def test_governance_update_returns_404_for_missing_location(monkeypatch):
     app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
         role="owner",
         organization_id=uuid4(),
-        organization=SimpleNamespace(allow_self_approval=True),
+        organization=SimpleNamespace(allow_self_approval=True, slug="acme"),
     )
 
     async with httpx.AsyncClient(

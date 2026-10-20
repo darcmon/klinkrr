@@ -45,6 +45,7 @@ class LocationResponse(BaseModel):
 
     id: uuid.UUID
     slug: str
+    public_path: str
     display_name: str
     description: str | None
     reminder_email: str | None

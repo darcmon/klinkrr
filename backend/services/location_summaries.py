@@ -28,7 +28,10 @@ def _label(version: FileVersion) -> str:
 
 
 async def location_responses(
-    db: AsyncSession, locations: list[Location]
+    db: AsyncSession,
+    locations: list[Location],
+    *,
+    organization_slug: str,
 ) -> list[LocationResponse]:
     """Responses with the published version and last submission filled in,
     in two queries however many locations there are."""
@@ -62,7 +65,18 @@ async def location_responses(
     responses = []
     for location in locations:
         version = published.get(location.current_approved_version_id)
-        response = LocationResponse.model_validate(location)
+        response = LocationResponse(
+            id=location.id,
+            slug=location.slug,
+            public_path=f"/{organization_slug}/{location.slug}",
+            display_name=location.display_name,
+            description=location.description,
+            reminder_email=location.reminder_email,
+            approval_required=location.approval_required,
+            current_approved_version_id=location.current_approved_version_id,
+            created_at=location.created_at,
+            updated_at=location.updated_at,
+        )
         response.last_submitted_at = last_submitted.get(location.id)
         response.published_version = (
             PublishedVersionSummary(

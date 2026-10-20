@@ -180,7 +180,10 @@ async def test_create_location_records_organization_creator_and_policy(
     approval_required, expected
 ):
     admin = SimpleNamespace(id=uuid4(), email="admin@example.com")
-    membership = SimpleNamespace(organization_id=uuid4(), role="manager")
+    membership = SimpleNamespace(
+        organization_id=uuid4(), role="manager",
+        organization=SimpleNamespace(slug="acme"),
+    )
 
     db = MagicMock(spec=AsyncSession)
     existing = MagicMock()
@@ -216,6 +219,7 @@ async def test_create_location_records_organization_creator_and_policy(
         )
 
     assert response.status_code == 201
+    assert response.json()["public_path"] == "/acme/dock-a"
     assert response.json()["approval_required"] is approval_required
 
     [location] = [

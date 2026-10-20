@@ -119,6 +119,27 @@ def existing_location(created_by_id, approval_required=True):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("organization_slug", ["acme", "orgie"])
+@pytest.mark.parametrize("path", ["/admin/locations", "/admin/locations/dock-a"])
+async def test_location_reads_return_canonical_public_path(path, organization_slug):
+    admin = SimpleNamespace(id=uuid4(), email="a@example.com")
+    location = existing_location(admin.id)
+    member = membership("owner")
+    member.organization.slug = organization_slug
+    db = db_returning(location)
+    db.execute.return_value.scalar_one.return_value = 1
+    db.execute.return_value.scalars.return_value.all.return_value = [location]
+
+    async with client_for(locations.router, db, admin, member) as client:
+        response = await client.get(path)
+
+    assert response.status_code == 200
+    body = response.json()
+    item = body["locations"][0] if path == "/admin/locations" else body
+    assert item["public_path"] == f"/{organization_slug}/dock-a"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("role", "is_creator", "payload", "status"),
     [
