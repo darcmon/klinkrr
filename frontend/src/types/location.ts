@@ -10,6 +10,7 @@ export interface PublishedVersionSummary {
 export interface LocationSummary {
   id: string;
   slug: string;
+  public_path: string;
   display_name: string;
   description: string | null;
   reminder_email: string | null;

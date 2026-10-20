@@ -1,21 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import api, { API_URL } from '../api/client';
+import type { LocationSummary } from '../types/location';
 
 import BaseField from '../components/BaseField.vue';
 import BaseButton from '../components/BaseButton.vue';
 import StateMessage from '../components/StateMessage.vue';
 
-interface Location {
-  id: string;
-  slug: string;
-  display_name: string;
-  description: string | null;
-  reminder_email: string | null;
-  current_approved_version_id: string | null;
-}
-
-const locations = ref<Location[]>([]);
+const locations = ref<LocationSummary[]>([]);
 const loading = ref(true);
 const error = ref('');
 
@@ -75,9 +67,9 @@ async function createLocation() {
   }
 }
 
-function publishedUrl(slug: string): string {
-  const base = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
-  return `${base}/${encodeURIComponent(slug)}`;
+function publishedUrl(publicPath: string): string {
+  const base = API_URL.replace(/\/$/, '');
+  return `${base}${publicPath}`;
 }
 onMounted(loadLocations);
 </script>
@@ -189,7 +181,7 @@ onMounted(loadLocations);
         <li v-for="loc in locations" :key="loc.id" class="location-item">
           <div class="location-info">
             <strong>{{ loc.display_name }}</strong>
-            <span class="slug">/{{ loc.slug }}</span>
+            <span class="slug">{{ loc.public_path }}</span>
             <p v-if="loc.description" class="desc">{{ loc.description }}</p>
           </div>
           <div class="status">
@@ -204,7 +196,7 @@ onMounted(loadLocations);
             </span>
             <a
               v-if="loc.current_approved_version_id"
-              :href="publishedUrl(loc.slug)"
+              :href="publishedUrl(loc.public_path)"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -246,7 +238,7 @@ onMounted(loadLocations);
               <th scope="row">
                 <div class="location-info">
                   <strong>{{ loc.display_name }}</strong>
-                  <span class="slug">/{{ loc.slug }}</span>
+                  <span class="slug">{{ loc.public_path }}</span>
                   <p v-if="loc.description" class="desc">
                     {{ loc.description }}
                   </p>
@@ -269,7 +261,7 @@ onMounted(loadLocations);
                 <div class="data-table-actions">
                   <a
                     v-if="loc.current_approved_version_id"
-                    :href="publishedUrl(loc.slug)"
+                    :href="publishedUrl(loc.public_path)"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
