@@ -43,6 +43,7 @@ async def list_versions(
     return VersionArchiveResponse(
         location_slug=location.slug,
         location_display_name=location.display_name,
+        public_path=f"/{membership.organization.slug}/{location.slug}",
         versions=versions,
         total=total,
         page=page,

@@ -2,8 +2,8 @@
 
 Every admin lookup of a location or version goes through here, so a record in
 another organization behaves exactly like one that doesn't exist (404, never
-403). The public route is deliberately unscoped: slugs are one global
-namespace.
+403). Public routes resolve the organization namespace or a preserved legacy
+address without requiring membership.
 """
 
 from uuid import UUID

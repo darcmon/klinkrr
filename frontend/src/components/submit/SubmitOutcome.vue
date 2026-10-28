@@ -20,7 +20,7 @@ const approving = ref(false);
 const approveError = ref('');
 const approveBlocked = ref(false);
 
-const url = computed(() => publicUrlLabel(result.value.location.slug));
+const url = computed(() => publicUrlLabel(result.value.location.public_path));
 const live = computed(() => result.value.location.published_version);
 const policyChanged = computed(
   () => result.value.status !== result.value.expectedStatus,

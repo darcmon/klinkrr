@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Integer, String, Text, ForeignKey, Index
+from sqlalchemy import CheckConstraint, Integer, String, Text, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP
 
@@ -15,7 +15,7 @@ class Location(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # Existing short URLs remain permanently attached to their original location.
     # New namespaced locations will not need a legacy address.
@@ -98,6 +98,7 @@ class Location(Base):
 
     # Indexes
     __table_args__ = (
+        UniqueConstraint("organization_id", "slug", name="uq_locations_organization_slug"),
         Index("idx_locations_slug", "slug", postgresql_where=(deleted_at.is_(None))),
         Index("idx_locations_organization", "organization_id"),
         CheckConstraint(

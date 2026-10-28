@@ -1,8 +1,8 @@
 """Rules for location slugs, shared by location creation and the live
 availability check so the two can never disagree.
 
-Slugs are one global namespace across organizations (they are the public
-URL), and a deleted location keeps its slug for good so a printed link never
+Slugs are unique within an organization, and a deleted location keeps its
+slug for good so a printed link never
 starts serving someone else's content.
 """
 
@@ -43,14 +43,19 @@ def is_valid_slug(slug: str) -> bool:
     return 0 < len(slug) <= MAX_SLUG_LENGTH and bool(SLUG_PATTERN.match(slug))
 
 
-async def slug_status(db: AsyncSession, slug: str) -> SlugStatus:
+async def slug_status(
+    db: AsyncSession, slug: str, *, organization_id: UUID
+) -> SlugStatus:
     if not is_valid_slug(slug):
         return SlugStatus("invalid")
     if slug in RESERVED_SLUGS:
         return SlugStatus("reserved")
 
     owner = (
-        await db.execute(select(Location).where(Location.slug == slug))
+        await db.execute(select(Location).where(
+            Location.organization_id == organization_id,
+            Location.slug == slug,
+        ))
     ).scalar_one_or_none()
     if owner is None:
         return SlugStatus(None)

@@ -23,7 +23,10 @@ import LocationPicker from '../components/submit/LocationPicker.vue';
 import SubmitOutcome from '../components/submit/SubmitOutcome.vue';
 
 const route = useRoute();
-const { load: loadCurrentUser } = useCurrentUser();
+const { user, load: loadCurrentUser } = useCurrentUser();
+const organizationSlug = computed(
+  () => user.value?.organization?.slug ?? null,
+);
 
 // --- Draft ------------------------------------------------------------------
 
@@ -102,14 +105,17 @@ const summary = computed(() => {
   if (d.kind === 'new') {
     return {
       name: d.draft.displayName.trim() || 'New location',
-      url: d.draft.slug ? publicUrlLabel(d.draft.slug) : null,
+      url:
+        organizationSlug.value && d.draft.slug
+          ? publicUrlLabel(`/${organizationSlug.value}/${d.draft.slug}`)
+          : null,
       isNew: true,
     };
   }
   if (d.kind === 'none') return null;
   return {
     name: d.location.display_name,
-    url: publicUrlLabel(d.location.slug),
+    url: publicUrlLabel(d.location.public_path),
     isNew: false,
   };
 });
@@ -126,7 +132,7 @@ const outcomeNote = computed(() => {
   // No version numbers here: the server decides them.
   return d.location.approval_required
     ? 'Creates a new pending version. Published content stays unchanged until approved.'
-    : `Publishes this version immediately, replacing what’s live at ${publicUrlLabel(d.location.slug)}.`;
+    : `Publishes this version immediately, replacing what’s live at ${publicUrlLabel(d.location.public_path)}.`;
 });
 
 const buttonLabel = computed(() => {
@@ -424,6 +430,7 @@ onMounted(() => {
         <LocationPicker
           v-else
           v-model="destination"
+          :organization-slug="organizationSlug"
           :disabled="busy"
           :notice="prefillNotice"
         />
@@ -440,7 +447,7 @@ onMounted(() => {
         </h2>
         <p v-if="currentLocation">
           <span class="text-mono url">{{
-            publicUrlLabel(currentLocation.slug)
+            publicUrlLabel(currentLocation.public_path)
           }}</span>
           exists. Nothing is published there yet.
         </p>

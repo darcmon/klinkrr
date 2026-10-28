@@ -13,7 +13,8 @@ from backend.routers import archive
 
 
 @pytest.mark.asyncio
-async def test_archive_includes_link_fields(monkeypatch):
+@pytest.mark.parametrize("organization_slug", ["acme", "orgie"])
+async def test_archive_includes_link_fields(monkeypatch, organization_slug):
     location = SimpleNamespace(
         id=uuid4(),
         slug="handbook",
@@ -57,7 +58,7 @@ async def test_archive_includes_link_fields(monkeypatch):
     app.dependency_overrides[get_current_membership] = lambda: SimpleNamespace(
         role="owner",
         organization_id=uuid4(),
-        organization=SimpleNamespace(allow_self_approval=True),
+        organization=SimpleNamespace(allow_self_approval=True, slug=organization_slug),
     )
 
     transport = httpx.ASGITransport(app=app)
@@ -70,6 +71,7 @@ async def test_archive_includes_link_fields(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["location_slug"] == "handbook"
+    assert body["public_path"] == f"/{organization_slug}/handbook"
     assert body["total"] == 1
     assert len(body["versions"]) == 1
 

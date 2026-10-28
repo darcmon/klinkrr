@@ -49,6 +49,7 @@ export type ArchivedVersion = Version & {
 export interface ArchiveResponse {
   location_slug: string;
   location_display_name: string;
+  public_path: string;
   versions: ArchivedVersion[];
   total: number;
   page: number;

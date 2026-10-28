@@ -144,16 +144,13 @@ async def create_location(
         if existing is not None:
             return await _replay_or_conflict(existing, body, membership, response, db)
 
-    status = await slug_status(db, body.slug)
+    status = await slug_status(db, body.slug, organization_id=membership.organization_id)
     if not status.available:
         raise _slug_error(status, membership)
 
     location = Location(
         id=body.id or uuid.uuid4(),
         slug=body.slug,
-        # ponytail: Keep assigning legacy URLs until namespaced creation ships;
-        # then new locations should leave this null.
-        legacy_slug=body.slug,
         display_name=body.display_name,
         description=body.description,
         reminder_email=body.reminder_email,
@@ -174,7 +171,8 @@ async def create_location(
                 return await _replay_or_conflict(
                     existing, body, membership, response, db
                 )
-        raise _slug_error(await slug_status(db, body.slug), membership)
+        status = await slug_status(db, body.slug, organization_id=membership.organization_id)
+        raise _slug_error(status, membership)
 
     await audit_service.log(
         db,
@@ -202,7 +200,7 @@ async def check_slug_availability(
 ):
     """Uses the same rules as creation. Advisory only: it doesn't reserve the
     slug, so creation can still return 409."""
-    status = await slug_status(db, slug)
+    status = await slug_status(db, slug, organization_id=membership.organization_id)
     if status.available:
         return SlugAvailabilityResponse(available=True, reason=None)
 

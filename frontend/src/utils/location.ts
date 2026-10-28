@@ -20,11 +20,13 @@ export function isValidSlug(slug: string): boolean {
   return slug.length > 0 && slug.length <= MAX_SLUG_LENGTH && SLUG_PATTERN.test(slug);
 }
 
-export function publicUrl(slug: string): string {
-  return `${API_URL.replace(/\/$/, '')}/${slug}`;
+export function publicUrl(path: string): string {
+  const base = API_URL.replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
 }
 
 /** The public URL without the scheme, for display. */
-export function publicUrlLabel(slug: string): string {
-  return publicUrl(slug).replace(/^https?:\/\//, '');
+export function publicUrlLabel(path: string): string {
+  return publicUrl(path).replace(/^https?:\/\//, '');
 }

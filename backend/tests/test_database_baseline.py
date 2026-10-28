@@ -26,6 +26,7 @@ async def test_public_addresses_resolve_the_original_owner(monkeypatch):
 
     from backend.db.session import get_db
     from backend.routers import public
+    from backend.services.slugs import slug_status
 
     url = os.environ.get("PHASE1_TEST_DATABASE_URL")
     if not url:
@@ -46,6 +47,24 @@ async def test_public_addresses_resolve_the_original_owner(monkeypatch):
                 id=location_id, organization_id=organization_id,
                 slug=slug, legacy_slug=legacy, display_name="Test",
             ))
+            other_org, other_location = uuid.uuid4(), uuid.uuid4()
+            other_namespace = f"org-{other_org}"
+            await connection.execute(insert(Organization).values(
+                id=other_org, name="Other owner", slug=other_namespace,
+            ))
+            assert (await slug_status(db, slug, organization_id=other_org)).available
+            await connection.execute(insert(Location).values(
+                id=other_location, organization_id=other_org,
+                slug=slug, display_name="Same slug, different owner",
+            ))
+            status = await slug_status(db, slug, organization_id=other_org)
+            assert status.reason == "taken"
+            assert status.owner.id == other_location
+            with pytest.raises(IntegrityError):
+                async with connection.begin_nested():
+                    await connection.execute(insert(Location).values(
+                        organization_id=other_org, slug=slug, display_name="Duplicate",
+                    ))
 
             # Exercise real SQL resolution, independent of file storage and auditing.
             found = []
@@ -64,16 +83,24 @@ async def test_public_addresses_resolve_the_original_owner(monkeypatch):
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://test",
             ) as client:
-                for path in (f"/{org_slug}/{slug}", f"/{legacy}",
+                for path in (f"/{org_slug}/{slug}", f"/{other_namespace}/{slug}", f"/{legacy}",
                              f"/wrong-owner/{slug}", f"/{slug}"):
                     await client.get(path)
-                assert found == [location_id, location_id, None, None]
+                assert found == [location_id, other_location, location_id, None, None]
                 await connection.execute(Location.__table__.update().where(
                     Location.id == location_id
                 ).values(deleted_at=datetime.now(timezone.utc)))
                 await client.get(f"/{org_slug}/{slug}")
                 await client.get(f"/{legacy}")
                 assert found[-2:] == [None, None]
+                db.expire_all()
+                assert (await slug_status(db, slug, organization_id=organization_id)).reason == "retired"
+                with pytest.raises(IntegrityError):
+                    async with connection.begin_nested():
+                        await connection.execute(insert(Location).values(
+                            organization_id=organization_id, slug=slug,
+                            display_name="Cannot reuse a deleted address",
+                        ))
             await db.close()
             await transaction.rollback()
     finally:

@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { formatDate } from '../utils/format';
 import type { ArchivedVersion, ArchiveResponse } from '../types/version';
-import api, { API_URL } from '../api/client';
+import api from '../api/client';
+import { publicUrl } from '../utils/location';
 
 import BaseField from '../components/BaseField.vue';
 import BaseButton from '../components/BaseButton.vue';
@@ -14,12 +15,10 @@ const props = defineProps<{
   slug: string;
 }>();
 
-const publicLocationUrl = computed(() => {
-  const base = API_URL.replace(/\/$/, '');
-  return `${base}/${encodeURIComponent(props.slug)}`;
-});
-
 const archive = ref<ArchiveResponse | null>(null);
+const publicLocationUrl = computed(() =>
+  archive.value ? publicUrl(archive.value.public_path) : null,
+);
 const downloadingId = ref<string | null>(null);
 const downloadError = ref('');
 const loading = ref(false);
@@ -119,9 +118,9 @@ watch(
     <router-link to="/locations">← Locations</router-link>
     <header class="archive-header">
       <h1>Version history</h1>
-      <p class="text-muted">Location: /{{ slug }}</p>
+      <p v-if="archive" class="text-muted">Location: {{ archive.public_path }}</p>
 
-      <a :href="publicLocationUrl" target="_blank" rel="noopener noreferrer">
+      <a v-if="publicLocationUrl" :href="publicLocationUrl" target="_blank" rel="noopener noreferrer">
         Open public location ↗
       </a>
 

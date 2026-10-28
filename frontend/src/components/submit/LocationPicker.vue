@@ -12,11 +12,16 @@ import SubmitCard from './SubmitCard.vue';
 
 const destination = defineModel<Destination>({ required: true });
 
-defineProps<{
+const props = defineProps<{
   disabled?: boolean;
   // Shown above the search, e.g. when a prefilled location wasn't found.
   notice?: string | null;
+  organizationSlug: string | null;
 }>();
+
+const draftPrefix = computed(() =>
+  props.organizationSlug ? `/${props.organizationSlug}/` : null,
+);
 
 // A write to the model reaches the parent's v-model on its next render, so
 // reading `destination.value` straight after writing it returns the old value.
@@ -365,7 +370,7 @@ defineExpose({ startChange });
     <template v-if="view === 'selected' && current">
       <div class="destination-card" :class="{ created: destination.kind === 'created' }">
         <strong class="destination-name">{{ current.display_name }}</strong>
-        <span class="text-mono text-small url">{{ publicUrlLabel(current.slug) }}</span>
+        <span class="text-mono text-small url">{{ publicUrlLabel(current.public_path) }}</span>
         <span class="text-small">{{ publishedLabel(current) }}</span>
         <span class="text-muted text-small">{{ policyLabel(current) }}</span>
       </div>
@@ -439,7 +444,7 @@ defineExpose({ startChange });
           @click="!disabled && select(option)"
         >
           <strong>{{ option.display_name }}</strong>
-          <span class="text-mono text-small url">{{ publicUrlLabel(option.slug) }}</span>
+          <span class="text-mono text-small url">{{ publicUrlLabel(option.public_path) }}</span>
           <span class="text-muted text-small">{{ publishedLabel(option) }}</span>
         </li>
       </ul>
@@ -501,7 +506,7 @@ defineExpose({ startChange });
       >
         <div class="slug-input" :class="{ unavailable: draft.availability.state === 'unavailable' }">
           <span class="slug-prefix text-mono" aria-hidden="true">
-            {{ publicUrlLabel('') }}
+            {{ draftPrefix ? publicUrlLabel(draftPrefix) : 'Loading organization…' }}
           </span>
           <input
             :id="id"
@@ -521,7 +526,11 @@ defineExpose({ startChange });
 
       <div id="new-location-url" class="url-preview" aria-live="polite">
         <span class="text-small">Public URL</span>
-        <span class="text-mono url">{{ draft.slug ? publicUrl(draft.slug) : '—' }}</span>
+        <span class="text-mono url">{{
+          draftPrefix && draft.slug
+            ? publicUrl(`${draftPrefix}${draft.slug}`)
+            : '—'
+        }}</span>
         <span
           class="availability text-small"
           :class="`availability--${draft.availability.state}`"

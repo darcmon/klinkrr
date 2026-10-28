@@ -190,6 +190,7 @@ class VersionArchiveResponse(BaseModel):
 
     location_slug: str
     location_display_name: str
+    public_path: str
     versions: list[FileVersionResponse]
     total: int
     page: int
