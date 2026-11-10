@@ -20,11 +20,12 @@ from backend.routers import archive, auth, locations
 
 
 def membership(role, *, organization_id=None, allow_self_approval=True):
+    organization_id = organization_id or uuid4()
     return SimpleNamespace(
         role=role,
-        organization_id=organization_id or uuid4(),
+        organization_id=organization_id,
         organization=SimpleNamespace(
-            id=uuid4(),
+            id=organization_id,
             name="Acme",
             slug="acme",
             allow_self_approval=allow_self_approval,
@@ -219,7 +220,7 @@ async def test_me_returns_organization_role_and_permissions(monkeypatch):
         avatar_url="https://example.com/avatar.jpg",
     )
     member = membership("approver", allow_self_approval=False)
-    monkeypatch.setattr(auth, "load_membership", AsyncMock(return_value=member))
+    monkeypatch.setattr(auth, "load_memberships", AsyncMock(return_value=[member]))
 
     async with client_for(auth.router, MagicMock(), admin, member) as client:
         body = (await client.get("/admin/me")).json()
@@ -234,6 +235,7 @@ async def test_me_returns_organization_role_and_permissions(monkeypatch):
         "allow_self_approval": False,
     }
     assert body["permissions"] == permissions_for("approver")
+    assert body["memberships"] == [{"organization": body["organization"], "role": "approver"}]
     assert body["sign_in_methods"] == ["password", "google"]
 
 
@@ -248,7 +250,7 @@ async def test_me_works_without_a_membership(monkeypatch):
         avatar_url=None,
         google_sub=None,
     )
-    monkeypatch.setattr(auth, "load_membership", AsyncMock(return_value=None))
+    monkeypatch.setattr(auth, "load_memberships", AsyncMock(return_value=[]))
 
     async with client_for(auth.router, MagicMock(), admin, None) as client:
         response = await client.get("/admin/me")
@@ -258,3 +260,48 @@ async def test_me_works_without_a_membership(monkeypatch):
     assert response.json()["organization"] is None
     assert response.json()["role"] is None
     assert response.json()["permissions"] == []
+    assert response.json()["memberships"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "PATCH"])
+@pytest.mark.parametrize("selection", ["none", "owner", "uploader", "unauthorized", "malformed"])
+async def test_me_organization_selection(method, selection, monkeypatch):
+    admin = SimpleNamespace(
+        id=uuid4(), email="a@example.com", display_name="A",
+        password_hash=None, microsoft_sub=None, google_sub="google-sub", avatar_url=None,
+    )
+    members = [membership("owner"), membership("uploader")]
+    loader = AsyncMock(return_value=members)
+    monkeypatch.setattr(auth, "load_memberships", loader)
+    selected = next((m for m in members if m.role == selection), None)
+    headers = {}
+    if selection != "none":
+        headers["X-Organization-ID"] = (
+            str(selected.organization_id) if selected else
+            "invalid" if selection == "malformed" else str(uuid4())
+        )
+    db = MagicMock(spec=AsyncSession)
+    async with client_for(auth.router, db, admin, None) as client:
+        response = await client.request(
+            method, "/admin/me", headers=headers,
+            **({"json": {"display_name": "Updated"}} if method == "PATCH" else {}),
+        )
+    if selection == "malformed":
+        assert response.status_code == 422
+        loader.assert_not_awaited()
+    elif selection == "unauthorized":
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "organization_access_denied"
+    else:
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["memberships"]) == 2
+        assert body["role"] == (selected.role if selected else None)
+        assert body["permissions"] == (permissions_for(selected.role) if selected else [])
+        assert body["organization"] == (
+            next(item["organization"] for item in body["memberships"] if item["role"] == selected.role)
+            if selected else None
+        )
+        if method == "PATCH":
+            assert body["display_name"] == "Updated"

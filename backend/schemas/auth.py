@@ -23,11 +23,18 @@ class OrganizationSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MembershipSummary(BaseModel):
+    organization: OrganizationSummary
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
 class AdminUserResponse(BaseModel):
     """The signed-in user, their organization and what their role allows.
 
     The frontend decides what to show from `permissions`, never from `role`.
-    `organization` and `role` are null for a user with no membership.
+    `organization` and `role` are null when no organization is selected.
     """
 
     id: uuid.UUID
@@ -37,6 +44,7 @@ class AdminUserResponse(BaseModel):
     organization: OrganizationSummary | None
     role: str | None
     permissions: list[str]
+    memberships: list[MembershipSummary] = Field(default_factory=list)
     sign_in_methods: list[Literal["password", "microsoft", "google"]]
 
 

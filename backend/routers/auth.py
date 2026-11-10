@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +10,8 @@ from backend.dependencies import (
     create_user_token,
     get_current_admin,
     hash_password,
-    load_membership,
+    load_memberships,
+    select_membership,
     verify_password,
 )
 from backend.models.admin_user import AdminUser
@@ -17,6 +19,7 @@ from backend.permissions import permissions_for
 from backend.schemas.auth import (
     AdminUserResponse,
     LoginRequest,
+    MembershipSummary,
     OrganizationSummary,
     PasswordChange,
     ProfileUpdate,
@@ -50,8 +53,11 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(access_token=token)
 
 
-async def _me_response(db: AsyncSession, admin: AdminUser) -> AdminUserResponse:
-    membership = await load_membership(db, admin.id)
+async def _me_response(
+    db: AsyncSession, admin: AdminUser, organization_id: UUID | None = None,
+) -> AdminUserResponse:
+    memberships = await load_memberships(db, admin.id)
+    membership = select_membership(memberships, organization_id)
     sign_in_methods = [
         method
         for method, linked in (
@@ -73,6 +79,7 @@ async def _me_response(db: AsyncSession, admin: AdminUser) -> AdminUserResponse:
         ),
         role=membership.role if membership else None,
         permissions=permissions_for(membership.role) if membership else [],
+        memberships=[MembershipSummary.model_validate(item) for item in memberships],
         sign_in_methods=sign_in_methods,
     )
 
@@ -81,8 +88,9 @@ async def _me_response(db: AsyncSession, admin: AdminUser) -> AdminUserResponse:
 async def get_me(
     admin: AdminUser = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
+    organization_id: UUID | None = Header(default=None, alias="X-Organization-ID"),
 ):
-    return await _me_response(db, admin)
+    return await _me_response(db, admin, organization_id)
 
 
 @router.patch("/me", response_model=AdminUserResponse)
@@ -90,6 +98,7 @@ async def update_me(
     body: ProfileUpdate,
     db: AsyncSession = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
+    organization_id: UUID | None = Header(default=None, alias="X-Organization-ID"),
 ):
     display_name = body.display_name.strip()
     if not display_name:
@@ -97,7 +106,7 @@ async def update_me(
 
     admin.display_name = display_name
     await db.flush()
-    return await _me_response(db, admin)
+    return await _me_response(db, admin, organization_id)
 
 
 @router.post("/me/password", status_code=204)

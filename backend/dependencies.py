@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import get_settings
 from backend.db.session import get_db
+from backend.errors import api_error
 from backend.models.admin_user import AdminUser
 from backend.models.organization import Membership
 from backend.permissions import Permission, has_permission
@@ -104,11 +105,45 @@ async def get_current_admin(
     return user
 
 
-async def load_membership(db: AsyncSession, user_id) -> Membership | None:
-    """The user's only membership, or None. Users belong to exactly one
-    organization until organization switching exists."""
-    result = await db.execute(select(Membership).where(Membership.user_id == user_id))
-    memberships = result.scalars().all()
+async def load_memberships(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[Membership]:
+    result = await db.execute(
+        select(Membership)
+        .where(Membership.user_id == user_id)
+        .order_by(Membership.organization_id)
+    )
+    return list(result.scalars().all())
+
+
+def select_membership(
+    memberships: list[Membership],
+    organization_id: uuid.UUID | None,
+) -> Membership | None:
+    if organization_id is not None:
+        for membership in memberships:
+            if membership.organization_id == organization_id:
+                return membership
+
+        raise api_error(
+            403,
+            "organization_access_denied",
+            "You don't have access to this organization.",
+        )
+
+    if len(memberships) == 1:
+        return memberships[0]
+
+    return None
+
+
+async def load_membership(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> Membership | None:
+    """Resolve the user's sole membership until explicit selection is wired."""
+    memberships = await load_memberships(db, user_id)
 
     if len(memberships) > 1:
         raise HTTPException(
