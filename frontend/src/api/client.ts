@@ -1,3 +1,7 @@
+import { useAuth } from '../composables/useAuth';
+
+const { selectedOrganizationId, logout } = useAuth();
+
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /** The server answered with an error. `code` is set for structured errors
@@ -73,13 +77,23 @@ function errorFromResponse(
 }
 
 function signOut() {
-  localStorage.removeItem('token');
+  logout();
   window.location.href = '/login';
 }
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (!token) return {};
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  if (selectedOrganizationId.value !== null) {
+    headers['X-Organization-ID'] = selectedOrganizationId.value;
+  }
+
+  return headers;
 }
 
 async function send(path: string, init: RequestInit): Promise<Response> {

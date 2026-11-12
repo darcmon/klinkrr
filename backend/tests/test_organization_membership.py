@@ -141,13 +141,13 @@ async def test_version_in_another_organization_is_not_found():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("count", "detail"),
+    ("count", "status", "code"),
     [
-        (0, "You are not a member of any organization"),
-        (2, "Belonging to more than one organization is not supported yet"),
+        (0, 403, "organization_membership_required"),
+        (2, 409, "organization_selection_required"),
     ],
 )
-async def test_membership_dependency_rejects_missing_or_multiple(count, detail):
+async def test_membership_dependency_rejects_missing_or_multiple(count, status, code):
     db = MagicMock(spec=AsyncSession)
     result = MagicMock()
     result.scalars.return_value.all.return_value = [object()] * count
@@ -156,8 +156,8 @@ async def test_membership_dependency_rejects_missing_or_multiple(count, detail):
     with pytest.raises(HTTPException) as error:
         await get_current_membership(admin=SimpleNamespace(id=uuid4()), db=db)
 
-    assert error.value.status_code == 403
-    assert error.value.detail == detail
+    assert error.value.status_code == status
+    assert error.value.detail["code"] == code
 
 
 @pytest.mark.asyncio

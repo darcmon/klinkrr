@@ -15,9 +15,15 @@ export interface OrganizationSummary {
 
 export type Role = 'uploader' | 'approver' | 'manager' | 'owner';
 
+export interface MembershipSummary {
+  organization: OrganizationSummary;
+  role: Role;
+}
+
 export type SignInMethod = 'password' | 'microsoft' | 'google';
 
-// GET /admin/me. `organization` and `role` are null without a membership.
+// GET /admin/me.
+// `organization` and `role` are null when no organization is selected.
 export interface CurrentUser {
   id: string;
   email: string;
@@ -26,6 +32,7 @@ export interface CurrentUser {
   organization: OrganizationSummary | null;
   role: Role | null;
   permissions: Permission[];
+  memberships: MembershipSummary[];
   sign_in_methods: SignInMethod[];
 }
 

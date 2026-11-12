@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncIterator
+from typing import Annotated
 
 import httpx
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -138,37 +139,33 @@ def select_membership(
     return None
 
 
-async def load_membership(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-) -> Membership | None:
-    """Resolve the user's sole membership until explicit selection is wired."""
-    memberships = await load_memberships(db, user_id)
-
-    if len(memberships) > 1:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Belonging to more than one organization is not supported yet",
-        )
-    return memberships[0] if memberships else None
-
-
 async def get_current_membership(
     admin: AdminUser = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
+    organization_id: Annotated[
+        uuid.UUID | None, Header(alias="X-Organization-ID")
+    ] = None,
 ) -> Membership:
     """The signed-in user's membership, with its organization loaded.
 
     Looked up on every request rather than stored in the JWT, so role changes
     apply immediately.
     """
-    membership = await load_membership(db, admin.id)
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of any organization",
+    memberships = await load_memberships(db, admin.id)
+    membership = select_membership(memberships, organization_id)
+    if membership is not None:
+        return membership
+    if not memberships:
+        raise api_error(
+            403,
+            "organization_membership_required",
+            "You are not a member of any organization.",
         )
-    return membership
+    raise api_error(
+        409,
+        "organization_selection_required",
+        "Select an organization to continue.",
+    )
 
 
 def require_permission(permission: Permission):

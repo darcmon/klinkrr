@@ -7,21 +7,29 @@ import type { CurrentUser, Permission } from '../types/user';
 const user = ref<CurrentUser | null>(null);
 let inFlight: Promise<CurrentUser | null> | null = null;
 
-const { token } = useAuth();
+const { token, selectedOrganizationId } = useAuth();
+let requestVersion = 0;
 
 // A new sign-in or a sign-out means a different user, role and organization.
-watch(token, () => {
-  user.value = null;
-  inFlight = null;
-});
+watch(
+  [token, selectedOrganizationId],
+  () => {
+    requestVersion += 1;
+    user.value = null;
+    inFlight = null;
+  },
+  { flush: 'sync' },
+);
 
 function fetchUser(): Promise<CurrentUser | null> {
-  const requestedWith = token.value;
-  if (!requestedWith) return Promise.resolve(null);
+  if (!token.value) return Promise.resolve(null);
+  requestVersion += 1;
+  const thisRequestVersion = requestVersion;
   const request = (async () => {
     const data: CurrentUser | undefined = await api.get('/admin/me');
-    // Ignore a response for a token that has since changed.
-    if (token.value === requestedWith) user.value = data ?? null;
+    // Ignore responses superseded by a context change or newer request.
+    if (thisRequestVersion !== requestVersion) return null;
+    user.value = data ?? null;
     return user.value;
   })();
 
