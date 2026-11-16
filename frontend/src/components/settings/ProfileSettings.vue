@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import api from '../../api/client';
 import { useCurrentUser } from '../../composables/useCurrentUser';
+import { useLeaveGuard } from '../../composables/useLeaveGuard';
 import type { CurrentUser } from '../../types/user';
 
 import BaseButton from '../BaseButton.vue';
@@ -17,6 +18,13 @@ const displayName = ref(props.user.display_name);
 const saving = ref(false);
 const error = ref('');
 const saved = ref(false);
+
+useLeaveGuard({
+  isBusy: () => saving.value,
+  busyMessage: 'Please wait for your profile to finish saving.',
+  isDirty: () => displayName.value.trim() !== props.user.display_name,
+  dirtyMessage: 'Leave Settings and discard your profile changes?',
+});
 
 watch(
   () => props.user.display_name,

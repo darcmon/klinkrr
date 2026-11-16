@@ -77,6 +77,7 @@ function errorFromResponse(
 }
 
 function signOut() {
+  // ponytail: 401 expiry clears auth without asking; draft recovery would need persistent storage.
   logout();
   window.location.href = '/login';
 }

@@ -3,20 +3,34 @@ import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCurrentUser } from '../composables/useCurrentUser';
 import { useAuth } from '../composables/useAuth';
+import { canLeave } from '../composables/useLeaveGuard';
 import BrandMark from './BrandMark.vue';
 import ThemeSelector from './ThemeSelector.vue';
 
 const route = useRoute();
 const router = useRouter();
-const { logout } = useAuth();
+const { logout, selectedOrganizationId, selectOrganization } = useAuth();
 const { user, load } = useCurrentUser();
 const pictureFailed = ref(false);
 watch(() => user.value?.avatar_url, () => { pictureFailed.value = false; });
 onMounted(() => { load().catch(() => { /* Keep the fallback if the profile is unavailable. */ }); });
 
-function handleLogout() {
+function handleOrganizationChange(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const previousId = selectedOrganizationId.value ?? user.value?.organization?.id ?? '';
+  if (select.value === previousId) return;
+  if (!canLeave()) {
+    select.value = previousId;
+    return;
+  }
+  selectOrganization(select.value);
+}
+
+async function handleLogout() {
+  // Navigate first so a leave guard can cancel before the token is cleared.
+  const failure = await router.replace('/login');
+  if (failure) return;
   logout();
-  router.replace('/login');
 }
 </script>
 
@@ -46,6 +60,22 @@ function handleLogout() {
     </nav>
 
     <div class="header-actions">
+      <select
+        v-if="user && user.memberships.length > 1"
+        class="form-control organization-select"
+        aria-label="Publish as organization"
+        :value="selectedOrganizationId ?? user.organization?.id ?? ''"
+        @change="handleOrganizationChange"
+      >
+        <option value="" disabled>Choose organization</option>
+        <option
+          v-for="membership in user.memberships"
+          :key="membership.organization.id"
+          :value="membership.organization.id"
+        >
+          {{ membership.organization.name }}
+        </option>
+      </select>
       <ThemeSelector />
       <button class="logout-button" type="button" aria-label="Log out" title="Log out" @click="handleLogout">
         <span>Log out</span>
@@ -129,6 +159,12 @@ button:hover {
   background-color: var(--color-surface-muted);
 }
 
+.organization-select {
+  width: auto;
+  max-width: 12rem;
+  min-width: 0;
+}
+
 .profile-link {
   display: inline-flex;
   align-items: center;
@@ -153,8 +189,8 @@ button:hover {
 .logout-button svg { display: none; width: 22px; height: 22px; }
 
 @media (max-width: 767px) {
-  .header-content { gap: var(--space-2); }
-  .header-actions { gap: var(--space-1); }
+  .header-content { gap: var(--space-2); flex-wrap: wrap; }
+  .header-actions { gap: var(--space-1); flex-wrap: wrap; flex-shrink: 1; }
   .logout-button { width: 44px; padding: 0; border-color: transparent; border-radius: 50%; }
   .logout-button span { display: none; }
   .logout-button svg { display: block; }

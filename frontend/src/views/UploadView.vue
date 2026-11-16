@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import api, { ApiError, NetworkError } from '../api/client';
 import { useCurrentUser } from '../composables/useCurrentUser';
+import { useLeaveGuard } from '../composables/useLeaveGuard';
 import { hasContent } from '../utils/content';
 import { publicUrlLabel } from '../utils/location';
 import type { LocationSummary, SlugUnavailableReason } from '../types/location';
@@ -45,6 +46,23 @@ const attempted = ref(false);
 const busy = computed(() =>
   ['creating', 'uploading', 'processing'].includes(submission.value.phase),
 );
+
+const hasUnsavedDraft = computed(() => {
+  if (submission.value.phase === 'done') return false;
+
+  return (
+    content.value.file !== null ||
+    content.value.link.trim() !== '' ||
+    destination.value.kind === 'new'
+  );
+});
+
+useLeaveGuard({
+  isBusy: () => busy.value,
+  busyMessage: 'Please wait for your submission to finish before leaving.',
+  isDirty: () => hasUnsavedDraft.value,
+  dirtyMessage: 'Leave this page and discard your unfinished submission?',
+});
 
 const currentLocation = computed<LocationSummary | null>(() =>
   destination.value.kind === 'existing' || destination.value.kind === 'created'

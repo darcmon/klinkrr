@@ -4,6 +4,7 @@ import { computed, nextTick, ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { formatDate } from '../utils/format';
 import { useCurrentUser } from '../composables/useCurrentUser';
+import { useLeaveGuard } from '../composables/useLeaveGuard';
 import type { PendingFilter, PendingVersion } from '../types/version';
 
 import BaseField from '../components/BaseField.vue';
@@ -31,6 +32,13 @@ const rejectionError = ref('');
 const dashboardHeading = ref<HTMLHeadingElement | null>(null);
 const userReady = ref(false);
 let latestRequest = 0;
+
+// No isBusy: a review action finishes on the server whether or not we stay.
+useLeaveGuard({
+  isDirty: () =>
+    rejectionTarget.value !== null && rejectionNotes.value.trim() !== '',
+  dirtyMessage: 'Leave this page and discard your rejection notes?',
+});
 
 const filterOptions = computed(() => {
   const options: { value: PendingFilter; label: string }[] = [];

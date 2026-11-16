@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import api from '../../api/client';
+import { useLeaveGuard } from '../../composables/useLeaveGuard';
 import type { CurrentUser, SignInMethod } from '../../types/user';
 
 import BaseButton from '../BaseButton.vue';
@@ -31,6 +32,14 @@ const confirm = ref('');
 const saving = ref(false);
 const error = ref('');
 const saved = ref(false);
+
+useLeaveGuard({
+  isBusy: () => saving.value,
+  busyMessage: 'Please wait for your password change to finish.',
+  isDirty: () =>
+    current.value !== '' || next.value !== '' || confirm.value !== '',
+  dirtyMessage: 'Leave Settings and discard your unfinished password change?',
+});
 
 // Only shown once the field has something in it, so an empty form isn't red.
 const nextError = computed(() =>

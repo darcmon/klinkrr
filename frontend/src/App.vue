@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
+import { useAuth } from './composables/useAuth';
 import AppHeader from './components/AppHeader.vue';
 import AppLayout from './components/AppLayout.vue';
 import ThemeSelector from './components/ThemeSelector.vue';
 
 const route = useRoute();
+const { selectedOrganizationId } = useAuth();
 </script>
 
 <template>
-  <AppLayout v-if="!route.meta.public">
+  <AppLayout
+    v-if="!route.meta.public"
+    :key="selectedOrganizationId ?? 'unselected'"
+  >
     <template #header>
       <AppHeader />
     </template>

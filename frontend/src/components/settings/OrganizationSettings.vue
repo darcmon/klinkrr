@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useLeaveGuard } from '../../composables/useLeaveGuard';
 import api from '../../api/client';
 import { useCurrentUser } from '../../composables/useCurrentUser';
+import { publicUrlLabel } from '../../utils/location';
 import type { OrganizationSummary } from '../../types/user';
 
 import BaseButton from '../BaseButton.vue';
@@ -18,6 +20,15 @@ const allowSelfApproval = ref(props.organization.allow_self_approval);
 const saving = ref(false);
 const error = ref('');
 const saved = ref(false);
+
+useLeaveGuard({
+  isBusy: () => saving.value,
+  busyMessage: 'Please wait for organization settings to finish saving.',
+  isDirty: () =>
+    name.value.trim() !== props.organization.name ||
+    allowSelfApproval.value !== props.organization.allow_self_approval,
+  dirtyMessage: 'Leave Settings and discard your organization changes?',
+});
 
 watch(
   () => props.organization,
@@ -78,7 +89,12 @@ async function save() {
       @submit.prevent="save"
       @input="saved = false"
     >
-      <BaseField id="organization-name" label="Name" v-slot="{ id }">
+      <BaseField
+        id="organization-name"
+        label="Name"
+        :hint="`Public address: ${publicUrlLabel(`/${props.organization.slug}`)}. Renaming doesn't change it.`"
+        v-slot="{ id }"
+      >
         <input
           :id="id"
           v-model="name"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import api, { API_URL } from '../api/client';
+import { useLeaveGuard } from '../composables/useLeaveGuard';
 import type { LocationSummary } from '../types/location';
 
 import BaseField from '../components/BaseField.vue';
@@ -20,6 +21,13 @@ const form = ref({
 });
 const formError = ref('');
 const submitting = ref(false);
+
+useLeaveGuard({
+  isBusy: () => submitting.value,
+  busyMessage: 'Please wait for location creation to finish before leaving.',
+  isDirty: () => Object.values(form.value).some((value) => value.trim() !== ''),
+  dirtyMessage: 'Leave this page and discard your unfinished location?',
+});
 
 async function loadLocations() {
   loading.value = true;
