@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import api from '../api/client';
 import { useAuth } from './useAuth';
 import type { CurrentUser, Permission } from '../types/user';
@@ -7,12 +7,13 @@ import type { CurrentUser, Permission } from '../types/user';
 const user = ref<CurrentUser | null>(null);
 let inFlight: Promise<CurrentUser | null> | null = null;
 
-const { token, selectedOrganizationId } = useAuth();
+const { token, selectedOrganizationId, organizationAccessLost } = useAuth();
 let requestVersion = 0;
 
 // A new sign-in or a sign-out means a different user, role and organization.
+// Losing access counts too: a revoked sole membership changes no selection.
 watch(
-  [token, selectedOrganizationId],
+  [token, selectedOrganizationId, organizationAccessLost],
   () => {
     requestVersion += 1;
     user.value = null;
@@ -60,5 +61,13 @@ export function useCurrentUser() {
     return user.value?.permissions.includes(permission) ?? false;
   }
 
-  return { user, load, refresh, can };
+  // Why no organization is active, or '' when one is (or the user isn't loaded).
+  const organizationPrompt = computed(() => {
+    if (!user.value || user.value.organization) return '';
+    return user.value.memberships.length > 0
+      ? 'Choose an organization above to continue.'
+      : "You're not a member of any organization yet. Ask an owner to invite you.";
+  });
+
+  return { user, load, refresh, can, organizationPrompt };
 }

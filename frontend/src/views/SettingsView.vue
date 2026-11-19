@@ -9,7 +9,7 @@ import SignInSettings from '../components/settings/SignInSettings.vue';
 import OrganizationSettings from '../components/settings/OrganizationSettings.vue';
 import MembersSettings from '../components/settings/MembersSettings.vue';
 
-const { user, load, can } = useCurrentUser();
+const { user, load, can, organizationPrompt } = useCurrentUser();
 
 const loading = ref(!user.value);
 const loadError = ref('');
@@ -49,10 +49,7 @@ onMounted(loadUser);
       <ProfileSettings :user="user" />
       <SignInSettings :user="user" />
 
-      <StateMessage
-        v-if="!user.organization"
-        message="You're not a member of any organization yet. Ask an owner to add you."
-      />
+      <StateMessage v-if="!user.organization" :message="organizationPrompt" />
 
       <template v-else-if="can('manage_members')">
         <OrganizationSettings :organization="user.organization" />

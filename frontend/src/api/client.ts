@@ -1,6 +1,7 @@
 import { useAuth } from '../composables/useAuth';
+import { useCurrentUser } from '../composables/useCurrentUser';
 
-const { selectedOrganizationId, logout } = useAuth();
+const { selectedOrganizationId, loseOrganizationAccess, logout } = useAuth();
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -76,6 +77,35 @@ function errorFromResponse(
   return new ApiError(message, status);
 }
 
+/** Builds the error, and drops a revoked organization selection. An ordinary
+ * permission 403 has a different code and leaves the selection alone. */
+function failure(
+  status: number,
+  statusText: string,
+  body: unknown,
+  sentOrganizationId: string | null,
+): ApiError {
+  const error = errorFromResponse(status, statusText, body);
+
+  // An explicit selection was revoked. Skip stale replies: the user may have
+  // switched since this request was sent.
+  const selectionRevoked =
+    error.code === 'organization_access_denied' &&
+    sentOrganizationId !== null &&
+    sentOrganizationId === selectedOrganizationId.value;
+
+  // A sole, automatically selected membership was revoked: no header was sent,
+  // but the cached user still shows an organization.
+  const soleMembershipRevoked =
+    error.code === 'organization_membership_required' &&
+    sentOrganizationId === null &&
+    selectedOrganizationId.value === null &&
+    useCurrentUser().user.value?.organization != null;
+
+  if (selectionRevoked || soleMembershipRevoked) loseOrganizationAccess();
+  return error;
+}
+
 function signOut() {
   // ponytail: 401 expiry clears auth without asking; draft recovery would need persistent storage.
   logout();
@@ -116,6 +146,7 @@ async function request(
     ...(options.headers as Record<string, string>),
     ...authHeaders(),
   };
+  const sentOrganizationId = selectedOrganizationId.value;
 
   const response = await send(path, { ...options, headers });
 
@@ -126,7 +157,7 @@ async function request(
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw errorFromResponse(response.status, response.statusText, body);
+    throw failure(response.status, response.statusText, body, sentOrganizationId);
   }
 
   if (response.status === 204) return null;
@@ -149,6 +180,7 @@ function uploadWithProgress(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_URL}${path}`);
+    const sentOrganizationId = selectedOrganizationId.value;
     for (const [name, value] of Object.entries(authHeaders())) {
       xhr.setRequestHeader(name, value);
     }
@@ -176,7 +208,7 @@ function uploadWithProgress(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(xhr.status === 204 ? null : body);
       } else {
-        reject(errorFromResponse(xhr.status, xhr.statusText, body));
+        reject(failure(xhr.status, xhr.statusText, body, sentOrganizationId));
       }
     };
     xhr.onerror = () => reject(new NetworkError());
@@ -197,6 +229,7 @@ export default {
     }),
   postForm: async (path: string, formData: FormData) => {
     // Deliberately NO Content-Type — the browser sets multipart boundary itself
+    const sentOrganizationId = selectedOrganizationId.value;
     const response = await send(path, {
       method: 'POST',
       headers: authHeaders(),
@@ -209,7 +242,7 @@ export default {
     }
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      throw errorFromResponse(response.status, response.statusText, body);
+      throw failure(response.status, response.statusText, body, sentOrganizationId);
     }
     return response.json();
   },

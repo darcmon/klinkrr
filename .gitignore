@@ -12,6 +12,8 @@ secrets/
 
 *.pdf
 visualizations/
+docs/
+work/
 architecture.md
 DEPLOY.md
 AGENTS.md
