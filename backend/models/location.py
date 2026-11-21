@@ -26,8 +26,14 @@ class Location(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
+    )
+
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("admin_users.id", name="fk_locations_owner_user_id"),
+        nullable=True,
     )
 
     # NULL for locations created before creators were recorded.
@@ -99,8 +105,13 @@ class Location(Base):
     # Indexes
     __table_args__ = (
         UniqueConstraint("organization_id", "slug", name="uq_locations_organization_slug"),
+        UniqueConstraint("owner_user_id", "slug", name="uq_locations_owner_user_slug"),
         Index("idx_locations_slug", "slug", postgresql_where=(deleted_at.is_(None))),
         Index("idx_locations_organization", "organization_id"),
+        CheckConstraint(
+            "(organization_id IS NULL) <> (owner_user_id IS NULL)",
+            name="ck_locations_exactly_one_owner",
+        ),
         CheckConstraint(
             "required_approvals >= 0", name="ck_locations_required_approvals"
         ),

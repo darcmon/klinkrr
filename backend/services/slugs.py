@@ -1,9 +1,8 @@
 """Rules for location slugs, shared by location creation and the live
 availability check so the two can never disagree.
 
-Slugs are unique within an organization, and a deleted location keeps its
-slug for good so a printed link never
-starts serving someone else's content.
+Slugs are unique within an owner, and a deleted location keeps its slug for
+good so a printed link never starts serving someone else's content.
 """
 
 import re
@@ -15,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.location import Location
+from backend.services.scoping import owner_clause
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9-]+$")
 MAX_SLUG_LENGTH = 100
@@ -44,7 +44,11 @@ def is_valid_slug(slug: str) -> bool:
 
 
 async def slug_status(
-    db: AsyncSession, slug: str, *, organization_id: UUID
+    db: AsyncSession,
+    slug: str,
+    *,
+    organization_id: UUID | None = None,
+    owner_user_id: UUID | None = None,
 ) -> SlugStatus:
     if not is_valid_slug(slug):
         return SlugStatus("invalid")
@@ -53,7 +57,7 @@ async def slug_status(
 
     owner = (
         await db.execute(select(Location).where(
-            Location.organization_id == organization_id,
+            owner_clause(organization_id, owner_user_id=owner_user_id),
             Location.slug == slug,
         ))
     ).scalar_one_or_none()
@@ -62,10 +66,19 @@ async def slug_status(
     return SlugStatus("retired" if owner.deleted_at else "taken", owner)
 
 
-def owner_name_for(status: SlugStatus, organization_id: UUID) -> str | None:
-    """The owning location's name, only if the caller's organization owns it,
-    so another tenant's location names are never revealed."""
-    if status.reason == "taken" and status.owner.organization_id == organization_id:
+def owner_name_for(
+    status: SlugStatus,
+    organization_id: UUID | None = None,
+    *,
+    owner_user_id: UUID | None = None,
+) -> str | None:
+    """Return a taken location's name only in the caller's owner context."""
+    if status.reason != "taken" or status.owner is None:
+        return None
+    if (
+        status.owner.organization_id == organization_id
+        and status.owner.owner_user_id == owner_user_id
+    ):
         return status.owner.display_name
     return None
 

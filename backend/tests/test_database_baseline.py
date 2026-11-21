@@ -211,6 +211,15 @@ async def test_database_enforces_organization_and_identity_constraints():
                 )
             ) is True
 
+            personal_location_id = uuid.uuid4()
+            personal_slug = f"personal-{personal_location_id}"
+            await connection.execute(insert(Location).values(
+                id=personal_location_id,
+                slug=personal_slug,
+                display_name="Personal",
+                owner_user_id=user_id,
+            ))
+
             await connection.execute(insert(Membership).values(
                 organization_id=organization_id, user_id=user_id, role="uploader"
             ))
@@ -225,6 +234,14 @@ async def test_database_enforces_organization_and_identity_constraints():
                 ),
                 insert(Location).values(
                     id=uuid.uuid4(), slug=str(uuid.uuid4()), display_name="No org"
+                ),
+                insert(Location).values(
+                    id=uuid.uuid4(), slug=str(uuid.uuid4()), display_name="Two owners",
+                    organization_id=organization_id, owner_user_id=user_id,
+                ),
+                insert(Location).values(
+                    id=uuid.uuid4(), slug=personal_slug,
+                    display_name="Reused personal address", owner_user_id=user_id,
                 ),
                 insert(Location).values(
                     id=uuid.uuid4(), slug=str(uuid.uuid4()), display_name="Negative",
@@ -268,6 +285,7 @@ async def test_admin_lookups_are_scoped_to_the_organization():
 
     from backend.services import scoping
     from backend.services.approval_service import ApprovalService
+    from backend.services.slugs import owner_name_for, slug_status
 
     engine = create_async_engine(url)
     try:
@@ -333,6 +351,45 @@ async def test_admin_lookups_are_scoped_to_the_organization():
                 db, ours, exclude_uploaded_by_id=user_id
             )
             assert [v.id for v, _ in waiting] == [colleague_version]
+
+            personal_slug = f"personal-{uuid.uuid4()}"
+            personal_location_id = await connection.scalar(
+                insert(Location).values(
+                    slug=personal_slug,
+                    display_name="Personal",
+                    owner_user_id=user_id,
+                ).returning(Location.id)
+            )
+            personal_version = await connection.scalar(
+                insert(FileVersion).values(
+                    location_id=personal_location_id,
+                    uploaded_by="test",
+                    uploaded_by_id=user_id,
+                    version_number=1,
+                    kind="link",
+                    link_url="https://example.com/personal",
+                    link_mode="redirect",
+                ).returning(FileVersion.id)
+            )
+
+            assert await scoping.get_location(
+                db, None, personal_slug, owner_user_id=user_id
+            ) is not None
+            assert await scoping.get_location(db, ours, personal_slug) is None
+            assert await scoping.get_version(
+                db, None, personal_version, owner_user_id=user_id
+            ) is not None
+            assert await scoping.get_version(db, ours, personal_version) is None
+            personal_status = await slug_status(
+                db, personal_slug, owner_user_id=user_id
+            )
+            assert personal_status.reason == "taken"
+            assert owner_name_for(
+                personal_status, owner_user_id=user_id
+            ) == "Personal"
+            assert (
+                await slug_status(db, personal_slug, owner_user_id=colleague_id)
+            ).available
 
             await db.close()
             await transaction.rollback()

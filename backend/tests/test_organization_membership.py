@@ -14,6 +14,7 @@ from backend.dependencies import (
 )
 from backend.models.location import Location
 from backend.routers import locations
+from backend.services import scoping
 from backend.services.approval_service import (
     ApprovalService,
     ReviewNotAllowed,
@@ -22,6 +23,13 @@ from backend.services.approval_service import (
 
 
 ORGANIZATION_ID = uuid4()
+
+
+def test_location_scoping_requires_exactly_one_owner():
+    with pytest.raises(ValueError, match="Exactly one"):
+        scoping.active_locations()
+    with pytest.raises(ValueError, match="Exactly one"):
+        scoping.active_locations(uuid4(), owner_user_id=uuid4())
 
 
 def review_db(version, location):
